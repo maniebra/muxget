@@ -7,6 +7,8 @@ pub struct Progress {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Status {
+    /// Accepted, waiting for a free slot.
+    Queued,
     Running,
     Done,
     Failed(String),

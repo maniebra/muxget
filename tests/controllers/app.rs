@@ -117,6 +117,51 @@ fn delete_of_the_last_row_moves_the_selection_back() {
 }
 
 #[test]
+fn queue_starts_oldest_first_and_only_when_a_slot_is_free() {
+    let mut app = app_with(&[Status::Running, Status::Queued, Status::Queued]);
+    app.max_active = 1;
+
+    assert_eq!(app.active(), 1);
+    assert_eq!(app.next_queued(), Some(1), "oldest queued row is next");
+
+    // Slot taken: nothing may start.
+    app.pump();
+    assert_eq!(app.downloads[1].status, Status::Queued);
+
+    // Freeing the slot lets exactly one through — the process would spawn here,
+    // so check the accounting instead: one slot, one candidate.
+    app.downloads[0].status = Status::Done;
+    assert_eq!(app.active(), 0);
+    assert_eq!(app.next_queued(), Some(1));
+}
+
+#[test]
+fn cancelling_a_queued_row_removes_it_from_the_queue() {
+    let mut app = app_with(&[Status::Queued, Status::Queued]);
+    app.max_active = 0; // keep pump from spawning anything
+
+    app.cancel(0);
+    assert_eq!(app.downloads[0].status, Status::Cancelled);
+    assert_eq!(app.next_queued(), Some(1));
+}
+
+#[test]
+fn slot_count_is_clamped() {
+    let mut app = app_with(&[]);
+    app.set_max_active(0);
+    assert_eq!(app.max_active, 1, "never zero, or nothing would ever run");
+    app.set_max_active(999);
+    assert_eq!(app.max_active, 16);
+}
+
+#[test]
+fn active_filter_shows_queued_rows_too() {
+    let mut app = app_with(&[Status::Queued, Status::Running, Status::Done]);
+    app.set_filter(Filter::Active);
+    assert_eq!(app.visible(), [0, 1]);
+}
+
+#[test]
 fn failed_filter_covers_cancelled() {
     let app = app_with(&[Status::Cancelled, Status::Failed("exit 1".into()), Status::Done]);
     assert_eq!(app.visible().len(), 3);

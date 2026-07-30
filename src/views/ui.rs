@@ -90,7 +90,15 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(t.bg).bg(t.accent).add_modifier(Modifier::BOLD),
         ),
         sep.clone(),
-        chip(format!("{} active", count(Filter::Active)), t.accent),
+        chip(format!("{}/{} running", app.active(), app.max_active), t.accent),
+        sep.clone(),
+        chip(
+            format!(
+                "{} queued",
+                app.downloads.iter().filter(|d| d.status == Status::Queued).count()
+            ),
+            t.muted,
+        ),
         sep.clone(),
         chip(format!("{} done", count(Filter::Done)), t.ok),
         sep.clone(),
@@ -161,6 +169,7 @@ fn draw_table(f: &mut Frame, app: &App, area: Rect) {
     let rows = visible.iter().enumerate().map(|(row, &i)| {
         let d = &app.downloads[i];
         let (icon, state, color) = match &d.status {
+            Status::Queued => ("·", "queued".into(), t.muted),
             Status::Running => ("▶", d.progress.eta.clone(), t.accent),
             Status::Done => ("✓", "done".into(), t.ok),
             Status::Cancelled => ("■", "cancelled".into(), t.muted),
@@ -233,6 +242,7 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
         ])
     };
     let (state, color) = match &d.status {
+        Status::Queued => ("queued".to_string(), t.muted),
         Status::Running => ("running".to_string(), t.accent),
         Status::Done => ("done".to_string(), t.ok),
         Status::Cancelled => ("cancelled".to_string(), t.muted),
@@ -271,7 +281,7 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let keys: &[(&str, &str)] = if area.width >= 86 {
-        &[("a", "add"), ("e", "edit"), ("d", "delete"), ("x", "stop"), ("j/k", "select"), ("Tab", "filter"), ("t", "theme"), ("q", "quit")]
+        &[("a", "add"), ("e", "edit"), ("d", "delete"), ("x", "stop"), ("±", "slots"), ("Tab", "filter"), ("t", "theme"), ("q", "quit")]
     } else if area.width >= 60 {
         &[("a", "add"), ("e", "edit"), ("d", "delete"), ("Tab", "filter"), ("q", "quit")]
     } else {

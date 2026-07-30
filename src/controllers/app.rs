@@ -33,7 +33,7 @@ impl Filter {
     pub fn matches(self, status: &Status) -> bool {
         match self {
             Filter::All => true,
-            Filter::Active => *status == Status::Running,
+            Filter::Active => matches!(status, Status::Running | Status::Queued),
             Filter::Done => *status == Status::Done,
             Filter::Failed => matches!(status, Status::Failed(_) | Status::Cancelled),
         }
@@ -47,6 +47,8 @@ pub struct App {
     pub dialog: Option<Dialog>,
     pub message: String,
     pub filter: Filter,
+    /// How many downloads may run at once; the rest wait as Queued.
+    pub max_active: usize,
     pub theme: Theme,
     pub themes: Vec<Theme>,
     /// Aggregate bytes/s, newest last, for the sparkline.
@@ -78,6 +80,7 @@ impl App {
             dialog: None,
             message: String::new(),
             filter: Filter::All,
+            max_active: 3,
             next_id: 0,
             theme: Theme::saved().unwrap_or_default(),
             themes: Theme::all(),
@@ -88,6 +91,7 @@ impl App {
         }
     }
 
+    /// Enqueue a url. It starts as soon as a slot is free.
     pub fn add(&mut self, url: &str) {
         let url = url.trim();
         if url.is_empty() {
@@ -99,31 +103,74 @@ impl App {
         };
         let id = self.next_id;
         self.next_id += 1;
+        self.downloads.push(Download {
+            id,
+            url: url.to_string(),
+            backend: backend.name(),
+            status: Status::Queued,
+            progress: Default::default(),
+            child: None,
+        });
+        self.message = format!("queued {url}");
+        self.pump();
+    }
+
+    pub fn active(&self) -> usize {
+        self.downloads.iter().filter(|d| d.status == Status::Running).count()
+    }
+
+    /// Index of the download that should start next, oldest first.
+    pub fn next_queued(&self) -> Option<usize> {
+        self.downloads.iter().position(|d| d.status == Status::Queued)
+    }
+
+    /// Start queued downloads until the concurrency limit is reached.
+    pub fn pump(&mut self) {
+        while self.active() < self.max_active {
+            let Some(at) = self.next_queued() else { break };
+            self.start(at);
+        }
+    }
+
+    fn start(&mut self, at: usize) {
+        let (id, url) = match self.downloads.get(at) {
+            Some(d) => (d.id, d.url.clone()),
+            None => return,
+        };
+        let Some(backend) = pick(&url) else { return };
         let name = backend.name();
-        match backend::run(backend, url, &self.dir, id, self.tx.clone()) {
+        match backend::run(backend, &url, &self.dir, id, self.tx.clone()) {
             Ok(child) => {
-                self.downloads.push(Download {
-                    id,
-                    url: url.to_string(),
-                    backend: name,
-                    status: Status::Running,
-                    progress: Default::default(),
-                    child: Some(child),
-                });
+                let d = &mut self.downloads[at];
+                d.child = Some(child);
+                d.status = Status::Running;
                 self.message = format!("started {url}");
             }
-            Err(e) => self.message = format!("{name} failed to start: {e}"),
+            // Failing to spawn must not leave it Queued, or pump would spin.
+            Err(e) => {
+                self.downloads[at].status = Status::Failed(format!("{name}: {e}"));
+                self.message = format!("{name} failed to start: {e}");
+            }
         }
+    }
+
+    /// Change how many downloads may run at once; frees or fills slots at once.
+    pub fn set_max_active(&mut self, n: usize) {
+        self.max_active = n.clamp(1, 16);
+        self.message = format!("{} concurrent", self.max_active);
+        self.pump();
     }
 
     /// Stop the download but keep the row.
     pub fn cancel(&mut self, at: usize) {
         if let Some(d) = self.downloads.get_mut(at) {
-            if d.status == Status::Running {
+            if matches!(d.status, Status::Running | Status::Queued) {
                 d.kill();
                 d.status = Status::Cancelled;
             }
         }
+        // Cancelling frees a slot for whatever is waiting.
+        self.pump();
     }
 
     /// Restart the download at `at` under a new url.
@@ -181,6 +228,8 @@ impl App {
                 }
             }
         }
+        // A finished download frees a slot for the next queued one.
+        self.pump();
     }
 
     /// Indices of the downloads the current filter shows, in list order.
@@ -296,6 +345,8 @@ impl App {
                     }
                 }
                 KeyCode::Char('x') => self.cancel(self.selected),
+                KeyCode::Char('+') | KeyCode::Char('=') => self.set_max_active(self.max_active + 1),
+                KeyCode::Char('-') => self.set_max_active(self.max_active.saturating_sub(1)),
                 KeyCode::Char('t') => {
                     self.theme = self.theme.next(&self.themes);
                     self.theme.save();

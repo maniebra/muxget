@@ -17,7 +17,16 @@ fn main() -> std::io::Result<()> {
         _ => std::env::var("MUXGET_THEME").unwrap_or_default(),
     };
 
+    // -j N concurrent downloads.
+    let jobs = match args.iter().position(|a| a == "-j") {
+        Some(i) if i + 1 < args.len() => args.drain(i..i + 2).nth(1).and_then(|n| n.parse().ok()),
+        _ => None,
+    };
+
     let mut app = App::new(dir);
+    if let Some(jobs) = jobs {
+        app.set_max_active(jobs);
+    }
     if !theme.is_empty() {
         app.theme = Theme::named(&theme);
     }

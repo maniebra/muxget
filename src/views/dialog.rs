@@ -4,7 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::controllers::app::{App, Dialog};
+use crate::controllers::app::{menu_for, App, Dialog};
 use crate::views::theme::Theme;
 
 /// Centered popover, at most `w` x `h` but never wider than the terminal.
@@ -21,6 +21,10 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
 }
 
 pub fn draw(f: &mut Frame, app: &App) {
+    if let Some(prefix) = app.pending {
+        draw_menu(f, app, prefix);
+        return;
+    }
     let Some(dialog) = &app.dialog else {
         return;
     };
@@ -38,6 +42,36 @@ pub fn draw(f: &mut Frame, app: &App) {
                 Line::default(),
                 Line::styled(
                     app.downloads.get(*at).map_or(String::new(), |d| d.url.clone()),
+                    Style::default().fg(t.err),
+                ),
+            ],
+            "y/Enter delete · n/Esc keep",
+        ),
+        Dialog::SetDir(buf) => (
+            "download directory",
+            named(t, "path", buf),
+            "Enter save · Esc cancel",
+        ),
+        Dialog::QueueNew(buf) => (
+            "new queue",
+            named(t, "name", buf),
+            "Enter create · Esc cancel",
+        ),
+        Dialog::QueueRename(_, buf) => (
+            "rename queue",
+            named(t, "name", buf),
+            "Enter rename · Esc cancel",
+        ),
+        Dialog::QueueDelete(at) => (
+            "delete queue",
+            vec![
+                Line::styled(
+                    "Delete this queue? Its downloads move to the default queue.",
+                    Style::default().fg(t.fg),
+                ),
+                Line::default(),
+                Line::styled(
+                    app.queues.get(*at).map_or(String::new(), |q| q.name.clone()),
                     Style::default().fg(t.err),
                 ),
             ],
@@ -70,9 +104,56 @@ pub fn draw(f: &mut Frame, app: &App) {
     );
 }
 
+/// which-key popover: the keys that continue the half-typed sequence.
+fn draw_menu(f: &mut Frame, app: &App, prefix: char) {
+    let t = &app.theme;
+    let Some((name, items)) = menu_for(prefix) else {
+        return;
+    };
+
+    let lines: Vec<Line> = items
+        .iter()
+        .map(|item| {
+            Line::from(vec![
+                Span::styled(
+                    format!(" {} ", item.key),
+                    Style::default().fg(t.bg).bg(t.accent).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(format!("  {}", item.label), Style::default().fg(t.fg)),
+            ])
+        })
+        .collect();
+
+    let area = centered(f.area(), 40, items.len() as u16 + 4);
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().bg(t.panel).fg(t.fg))
+            .block(
+                Block::bordered()
+                    .border_style(Style::default().fg(t.accent).bg(t.panel))
+                    .style(Style::default().bg(t.panel))
+                    .padding(Padding::horizontal(1))
+                    .title(Span::styled(
+                        format!(" {prefix} — {name} "),
+                        Style::default().fg(t.accent).bg(t.panel).add_modifier(Modifier::BOLD),
+                    ))
+                    .title_bottom(Span::styled(
+                        " any other key cancels ",
+                        Style::default().fg(t.muted).bg(t.panel),
+                    )),
+            ),
+        area,
+    );
+}
+
 fn field<'a>(t: &Theme, buf: &str) -> Vec<Line<'a>> {
+    named(t, "url", buf)
+}
+
+fn named<'a>(t: &Theme, label: &str, buf: &str) -> Vec<Line<'a>> {
     vec![
-        Line::styled("url", Style::default().fg(t.muted)),
+        Line::styled(label.to_string(), Style::default().fg(t.muted)),
         Line::from(vec![
             Span::styled("▸ ", Style::default().fg(t.accent)),
             Span::styled(

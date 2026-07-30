@@ -1,6 +1,7 @@
 pub mod aria2;
 pub mod backend;
 pub mod download;
+pub mod queue;
 pub mod ytdlp;
 
 use backend::Backend;

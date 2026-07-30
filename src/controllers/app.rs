@@ -6,6 +6,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::DefaultTerminal;
 
 use crate::models::download::{Download, Status, Update};
+use crate::models::queue::{self, Queue};
 use crate::models::{backend, pick};
 use crate::views;
 use crate::views::theme::Theme;
@@ -45,18 +46,79 @@ pub struct App {
     pub downloads: Vec<Download>,
     pub selected: usize,
     pub dialog: Option<Dialog>,
+    /// Half-typed key sequence, e.g. `g` waiting for `n`. Shows the menu.
+    pub pending: Option<char>,
     pub message: String,
     pub filter: Filter,
-    /// How many downloads may run at once; the rest wait as Queued.
-    pub max_active: usize,
+    pub queues: Vec<Queue>,
+    /// Index into `queues` — the queue being viewed; new downloads land here.
+    pub current: usize,
     pub theme: Theme,
     pub themes: Vec<Theme>,
     /// Aggregate bytes/s, newest last, for the sparkline.
     pub history: Vec<u64>,
     ticked: Instant,
     next_id: usize,
+    next_queue_id: usize,
     tx: Sender<Update>,
     rx: Receiver<Update>,
+}
+
+/// Only `~`, which is what a typed path actually needs; the shell is not
+/// involved here so nothing else would be expanded anyway.
+fn shellexpand(path: &str) -> String {
+    match path.strip_prefix('~') {
+        Some(rest) => {
+            let home = std::env::var("HOME").unwrap_or_default();
+            format!("{home}{rest}")
+        }
+        None => path.to_string(),
+    }
+}
+
+fn char_of(key: KeyCode) -> Option<char> {
+    match key {
+        KeyCode::Char(c) => Some(c),
+        _ => None,
+    }
+}
+
+fn key_char(key: KeyCode) -> char {
+    char_of(key).unwrap_or('\0')
+}
+
+/// One entry of a which-key style menu: press the prefix, then this key.
+pub struct MenuItem {
+    pub key: char,
+    pub label: &'static str,
+}
+
+/// Queue commands, reached with the `g` prefix (`gn`, `gr`, …); `q` stays
+/// quit, and `g` is free because there is nothing to jump to. The menu
+/// popover renders this table, so adding an entry documents itself.
+pub const QUEUE_MENU: &[MenuItem] = &[
+    MenuItem { key: 'n', label: "new queue" },
+    MenuItem { key: 'r', label: "rename queue" },
+    MenuItem { key: 'd', label: "delete queue" },
+    MenuItem { key: 'j', label: "next queue" },
+    MenuItem { key: 'k', label: "previous queue" },
+    MenuItem { key: '+', label: "one more slot" },
+    MenuItem { key: '-', label: "one less slot" },
+];
+
+/// Settings commands, reached with the `s` prefix.
+pub const SETTINGS_MENU: &[MenuItem] = &[
+    MenuItem { key: 't', label: "next theme" },
+    MenuItem { key: 'T', label: "previous theme" },
+    MenuItem { key: 'd', label: "download directory" },
+];
+
+pub fn menu_for(prefix: char) -> Option<(&'static str, &'static [MenuItem])> {
+    match prefix {
+        'g' => Some(("queue", QUEUE_MENU)),
+        's' => Some(("settings", SETTINGS_MENU)),
+        _ => None,
+    }
 }
 
 /// Modal state. `Some` means the popover is up and owns the keyboard.
@@ -68,6 +130,14 @@ pub enum Dialog {
     Edit(usize, String),
     /// Confirming removal of the download at this index.
     Delete(usize),
+    /// Name for a new queue.
+    QueueNew(String),
+    /// Renaming the queue at this index in `queues`.
+    QueueRename(usize, String),
+    /// Confirming removal of the queue at this index in `queues`.
+    QueueDelete(usize),
+    /// New download directory being typed.
+    SetDir(String),
 }
 
 impl App {
@@ -78,10 +148,13 @@ impl App {
             downloads: Vec::new(),
             selected: 0,
             dialog: None,
+            pending: None,
             message: String::new(),
             filter: Filter::All,
-            max_active: 3,
+            queues: vec![Queue::new(queue::DEFAULT, "default", 3)],
+            current: 0,
             next_id: 0,
+            next_queue_id: 1,
             theme: Theme::saved().unwrap_or_default(),
             themes: Theme::all(),
             history: Vec::new(),
@@ -105,6 +178,7 @@ impl App {
         self.next_id += 1;
         self.downloads.push(Download {
             id,
+            queue: self.queue().id,
             url: url.to_string(),
             backend: backend.name(),
             status: Status::Queued,
@@ -115,20 +189,41 @@ impl App {
         self.pump();
     }
 
-    pub fn active(&self) -> usize {
-        self.downloads.iter().filter(|d| d.status == Status::Running).count()
+    /// The queue currently being viewed. Always valid — `current` is clamped
+    /// on every change and the default queue can never be removed.
+    pub fn queue(&self) -> &Queue {
+        &self.queues[self.current.min(self.queues.len() - 1)]
     }
 
-    /// Index of the download that should start next, oldest first.
-    pub fn next_queued(&self) -> Option<usize> {
-        self.downloads.iter().position(|d| d.status == Status::Queued)
+    pub fn active_in(&self, queue: usize) -> usize {
+        self.downloads
+            .iter()
+            .filter(|d| d.queue == queue && d.status == Status::Running)
+            .count()
     }
 
-    /// Start queued downloads until the concurrency limit is reached.
+    pub fn queued_in(&self, queue: usize) -> usize {
+        self.downloads
+            .iter()
+            .filter(|d| d.queue == queue && d.status == Status::Queued)
+            .count()
+    }
+
+    /// Index of the download that should start next in `queue`, oldest first.
+    pub fn next_queued(&self, queue: usize) -> Option<usize> {
+        self.downloads
+            .iter()
+            .position(|d| d.queue == queue && d.status == Status::Queued)
+    }
+
+    /// Fill every queue's free slots. Queues run independently of each other.
     pub fn pump(&mut self) {
-        while self.active() < self.max_active {
-            let Some(at) = self.next_queued() else { break };
-            self.start(at);
+        for i in 0..self.queues.len() {
+            let (id, max) = (self.queues[i].id, self.queues[i].max_active);
+            while self.active_in(id) < max {
+                let Some(at) = self.next_queued(id) else { break };
+                self.start(at);
+            }
         }
     }
 
@@ -154,11 +249,85 @@ impl App {
         }
     }
 
-    /// Change how many downloads may run at once; frees or fills slots at once.
+    /// Change how many downloads the current queue may run at once.
     pub fn set_max_active(&mut self, n: usize) {
-        self.max_active = n.clamp(1, 16);
-        self.message = format!("{} concurrent", self.max_active);
+        let i = self.current;
+        self.queues[i].max_active = n.clamp(1, 16);
+        self.message = format!("{}: {} concurrent", self.queues[i].name, self.queues[i].max_active);
         self.pump();
+    }
+
+    /// Create a queue and switch to it. Blank or duplicate names are refused.
+    pub fn add_queue(&mut self, name: &str) {
+        let name = name.trim();
+        if name.is_empty() {
+            return;
+        }
+        if self.queues.iter().any(|q| q.name == name) {
+            self.message = format!("queue {name} already exists");
+            return;
+        }
+        let id = self.next_queue_id;
+        self.next_queue_id += 1;
+        self.queues.push(Queue::new(id, name, 3));
+        self.current = self.queues.len() - 1;
+        self.clamp_selection();
+        self.message = format!("queue {name} created");
+    }
+
+    pub fn rename_queue(&mut self, at: usize, name: &str) {
+        let name = name.trim();
+        if name.is_empty() || at >= self.queues.len() {
+            return;
+        }
+        if self.queues.iter().enumerate().any(|(i, q)| i != at && q.name == name) {
+            self.message = format!("queue {name} already exists");
+            return;
+        }
+        self.queues[at].name = name.to_string();
+    }
+
+    /// Remove a queue; its downloads move to the default queue rather than
+    /// being silently killed. The default queue itself cannot be removed.
+    pub fn delete_queue(&mut self, at: usize) {
+        let Some(q) = self.queues.get(at) else { return };
+        if q.id == queue::DEFAULT {
+            self.message = "the default queue cannot be deleted".into();
+            return;
+        }
+        let (id, name) = (q.id, q.name.clone());
+        for d in self.downloads.iter_mut().filter(|d| d.queue == id) {
+            d.queue = queue::DEFAULT;
+        }
+        self.queues.remove(at);
+        self.current = self.current.min(self.queues.len() - 1);
+        self.clamp_selection();
+        self.message = format!("queue {name} deleted, downloads moved to default");
+        self.pump();
+    }
+
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.theme = theme;
+        self.theme.save();
+        self.message = format!("theme: {}", self.theme.name);
+    }
+
+    /// Where new downloads are written. Running transfers keep their old dir.
+    pub fn set_dir(&mut self, dir: &str) {
+        let path = PathBuf::from(shellexpand(dir.trim()));
+        if !path.is_dir() {
+            self.message = format!("not a directory: {}", path.display());
+            return;
+        }
+        self.dir = path;
+        self.message = format!("saving to {}", self.dir.display());
+    }
+
+    /// Switch the viewed queue by `delta` places.
+    pub fn cycle_queue(&mut self, delta: isize) {
+        let n = self.queues.len() as isize;
+        self.current = (self.current as isize + delta).rem_euclid(n) as usize;
+        self.clamp_selection();
     }
 
     /// Stop the download but keep the row.
@@ -232,12 +401,13 @@ impl App {
         self.pump();
     }
 
-    /// Indices of the downloads the current filter shows, in list order.
+    /// Indices of the downloads shown: the current queue, current filter.
     pub fn visible(&self) -> Vec<usize> {
+        let queue = self.queue().id;
         self.downloads
             .iter()
             .enumerate()
-            .filter(|(_, d)| self.filter.matches(&d.status))
+            .filter(|(_, d)| d.queue == queue && self.filter.matches(&d.status))
             .map(|(i, _)| i)
             .collect()
     }
@@ -315,12 +485,37 @@ impl App {
     /// Handle one keypress. Returns true when the app should quit.
     /// An open dialog owns the keyboard until it closes.
     pub fn on_key(&mut self, key: KeyCode) -> bool {
+        // A half-typed sequence swallows the next key, vim style.
+        if let Some(prefix) = self.pending.take() {
+            return self.on_sequence(prefix, key);
+        }
+
         match self.dialog.take() {
             Some(Dialog::Delete(at)) => match key {
                 KeyCode::Enter | KeyCode::Char('y') => self.delete(at),
                 KeyCode::Esc | KeyCode::Char('n') => {}
                 _ => self.dialog = Some(Dialog::Delete(at)),
             },
+            Some(Dialog::QueueDelete(at)) => match key {
+                KeyCode::Enter | KeyCode::Char('y') => self.delete_queue(at),
+                KeyCode::Esc | KeyCode::Char('n') => {}
+                _ => self.dialog = Some(Dialog::QueueDelete(at)),
+            },
+            Some(Dialog::SetDir(buf)) => {
+                if let Some(text) = self.type_into(buf, key, Dialog::SetDir) {
+                    self.set_dir(&text);
+                }
+            }
+            Some(Dialog::QueueNew(buf)) => {
+                if let Some(text) = self.type_into(buf, key, Dialog::QueueNew) {
+                    self.add_queue(&text);
+                }
+            }
+            Some(Dialog::QueueRename(at, buf)) => {
+                if let Some(text) = self.type_into(buf, key, |b| Dialog::QueueRename(at, b)) {
+                    self.rename_queue(at, &text);
+                }
+            }
             Some(Dialog::Add(buf)) => {
                 if let Some(text) = self.type_into(buf, key, Dialog::Add) {
                     self.add(&text);
@@ -333,6 +528,9 @@ impl App {
             }
             None => match key {
                 KeyCode::Char('q') => return true,
+                KeyCode::Char('g') | KeyCode::Char('s') | KeyCode::Char('Z') => {
+                    self.pending = Some(key_char(key))
+                }
                 KeyCode::Char('a') => self.dialog = Some(Dialog::Add(String::new())),
                 KeyCode::Char('e') => {
                     if let Some(d) = self.downloads.get(self.selected) {
@@ -345,13 +543,8 @@ impl App {
                     }
                 }
                 KeyCode::Char('x') => self.cancel(self.selected),
-                KeyCode::Char('+') | KeyCode::Char('=') => self.set_max_active(self.max_active + 1),
-                KeyCode::Char('-') => self.set_max_active(self.max_active.saturating_sub(1)),
-                KeyCode::Char('t') => {
-                    self.theme = self.theme.next(&self.themes);
-                    self.theme.save();
-                    self.message = format!("theme: {}", self.theme.name);
-                }
+                KeyCode::Char(']') | KeyCode::Right => self.cycle_queue(1),
+                KeyCode::Char('[') | KeyCode::Left => self.cycle_queue(-1),
                 KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
                 KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
                 KeyCode::Tab | KeyCode::Char('f') => {
@@ -360,6 +553,30 @@ impl App {
                 }
                 _ => {}
             },
+        }
+        false
+    }
+
+    /// Second key of a sequence. Anything unlisted quietly cancels, as in vim.
+    fn on_sequence(&mut self, prefix: char, key: KeyCode) -> bool {
+        let Some(c) = char_of(key) else { return false };
+        match (prefix, c) {
+            ('Z', 'Z') | ('Z', 'Q') => return true,
+            ('s', 't') => self.set_theme(self.theme.next(&self.themes)),
+            ('s', 'T') => self.set_theme(self.theme.prev(&self.themes)),
+            ('s', 'd') => {
+                self.dialog = Some(Dialog::SetDir(self.dir.display().to_string()));
+            }
+            ('g', 'n') => self.dialog = Some(Dialog::QueueNew(String::new())),
+            ('g', 'r') => {
+                self.dialog = Some(Dialog::QueueRename(self.current, self.queue().name.clone()))
+            }
+            ('g', 'd') => self.dialog = Some(Dialog::QueueDelete(self.current)),
+            ('g', 'j') | ('g', 'l') => self.cycle_queue(1),
+            ('g', 'k') | ('g', 'h') => self.cycle_queue(-1),
+            ('g', '+') | ('g', '=') => self.set_max_active(self.queue().max_active + 1),
+            ('g', '-') => self.set_max_active(self.queue().max_active - 1),
+            _ => {}
         }
         false
     }

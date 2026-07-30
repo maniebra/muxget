@@ -19,6 +19,8 @@ pub enum Status {
 pub struct Download {
     /// Stable across removals — worker threads report against this, not an index.
     pub id: usize,
+    /// Queue this download belongs to (`queue::Queue::id`).
+    pub queue: usize,
     pub url: String,
     pub backend: &'static str,
     pub status: Status,

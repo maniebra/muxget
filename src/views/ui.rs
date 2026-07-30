@@ -90,15 +90,17 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(t.bg).bg(t.accent).add_modifier(Modifier::BOLD),
         ),
         sep.clone(),
-        chip(format!("{}/{} running", app.active(), app.max_active), t.accent),
+        Span::styled(
+            format!(" {} ", app.queue().name),
+            Style::default().fg(t.fg).bg(t.selected).add_modifier(Modifier::BOLD),
+        ),
         sep.clone(),
         chip(
-            format!(
-                "{} queued",
-                app.downloads.iter().filter(|d| d.status == Status::Queued).count()
-            ),
-            t.muted,
+            format!("{}/{} running", app.active_in(app.queue().id), app.queue().max_active),
+            t.accent,
         ),
+        sep.clone(),
+        chip(format!("{} queued", app.queued_in(app.queue().id)), t.muted),
         sep.clone(),
         chip(format!("{} done", count(Filter::Done)), t.ok),
         sep.clone(),
@@ -128,6 +130,38 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
+    let [queues, filters] =
+        Layout::vertical([Constraint::Min(5), Constraint::Length(6)]).areas(area);
+
+    let lines: Vec<Line> = app
+        .queues
+        .iter()
+        .enumerate()
+        .map(|(i, q)| {
+            let on = i == app.current;
+            let style = if on {
+                Style::default().fg(t.accent).bg(t.selected).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(t.fg).bg(t.panel)
+            };
+            Line::styled(
+                format!(
+                    "{} {:<9}{}/{}",
+                    if on { "▸" } else { " " },
+                    truncate(&q.name, 9),
+                    app.active_in(q.id),
+                    q.max_active
+                ),
+                style,
+            )
+        })
+        .collect();
+    f.render_widget(
+        Paragraph::new(lines)
+            .block(panel(t, "queues", t.panel).padding(Padding::horizontal(1))),
+        queues,
+    );
+
     let rows: Vec<Line> = Filter::ALL
         .iter()
         .map(|filter| {
@@ -143,14 +177,26 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
         .collect();
     f.render_widget(
         Paragraph::new(rows).block(panel(t, "filter", t.panel).padding(Padding::horizontal(1))),
-        area,
+        filters,
     );
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    s.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
 }
 
 fn draw_table(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let visible = app.visible();
-    let title = format!("downloads — {} ({})", app.filter.label(), visible.len());
+    let title = format!(
+        "{} — {} ({})",
+        app.queue().name,
+        app.filter.label(),
+        visible.len()
+    );
 
     if visible.is_empty() {
         f.render_widget(
@@ -229,7 +275,11 @@ fn draw_sparkline(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_details(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let Some(d) = app.downloads.get(app.selected).filter(|d| app.filter.matches(&d.status)) else {
+    let Some(d) = app
+        .downloads
+        .get(app.selected)
+        .filter(|_| app.visible().contains(&app.selected))
+    else {
         f.render_widget(panel(t, "details", t.panel), area);
         return;
     };
@@ -280,12 +330,12 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let keys: &[(&str, &str)] = if area.width >= 86 {
-        &[("a", "add"), ("e", "edit"), ("d", "delete"), ("x", "stop"), ("±", "slots"), ("Tab", "filter"), ("t", "theme"), ("q", "quit")]
-    } else if area.width >= 60 {
-        &[("a", "add"), ("e", "edit"), ("d", "delete"), ("Tab", "filter"), ("q", "quit")]
+    let keys: &[(&str, &str)] = if area.width >= 100 {
+        &[("a", "add"), ("e", "edit"), ("d", "del"), ("x", "stop"), ("g…", "queue"), ("s…", "settings"), ("[ ]", "switch"), ("Tab", "filter"), ("q", "quit")]
+    } else if area.width >= 74 {
+        &[("a", "add"), ("d", "del"), ("g…", "queue"), ("s…", "settings"), ("Tab", "filter"), ("q", "quit")]
     } else {
-        &[("a", "add"), ("d", "delete"), ("q", "quit")]
+        &[("a", "add"), ("g…", "queue"), ("s…", "settings"), ("q", "quit")]
     };
 
     let mut spans = Vec::new();

@@ -109,11 +109,19 @@ impl Theme {
     }
 
     pub fn next(&self, themes: &[Theme]) -> Theme {
+        self.step(themes, 1)
+    }
+
+    pub fn prev(&self, themes: &[Theme]) -> Theme {
+        self.step(themes, -1)
+    }
+
+    fn step(&self, themes: &[Theme], delta: isize) -> Theme {
         if themes.is_empty() {
             return self.clone();
         }
-        let i = themes.iter().position(|t| t.name == self.name).unwrap_or(0);
-        themes[(i + 1) % themes.len()].clone()
+        let i = themes.iter().position(|t| t.name == self.name).unwrap_or(0) as isize;
+        themes[(i + delta).rem_euclid(themes.len() as isize) as usize].clone()
     }
 
     /// Remembered across runs; failure is not worth interrupting a download for.

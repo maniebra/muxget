@@ -1,0 +1,24 @@
+[package]
+name = "muxget"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "muxget"
+path = "src/main.rs"
+
+# tests/ mirrors src/ paths; cargo only auto-discovers tests/*.rs, so declare them.
+[[test]]
+name = "utils_parse"
+path = "tests/utils/parse.rs"
+
+[[test]]
+name = "models_backend"
+path = "tests/models/backend.rs"

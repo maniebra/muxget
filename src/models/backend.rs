@@ -1,0 +1,58 @@
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
+
+use crate::models::download::{Progress, Status, Update};
+use crate::utils::parse::for_each_line;
+
+/// A download tool. Supply a command line and a progress parser; the spawning,
+/// line reading and reporting below is shared by every implementation.
+pub trait Backend: Send + Sync {
+    fn name(&self) -> &'static str;
+
+    /// Does this backend want to handle `url`?
+    fn accepts(&self, url: &str) -> bool;
+
+    /// Command to run. Must write progress to stdout.
+    fn command(&self, url: &str, dir: &Path) -> Command;
+
+    /// One line of tool output -> progress, or None if the line says nothing.
+    fn parse(&self, line: &str) -> Option<Progress>;
+}
+
+/// Spawn the backend and stream its progress to `tx` until it exits.
+pub fn run(
+    backend: Box<dyn Backend>,
+    url: &str,
+    dir: &Path,
+    id: usize,
+    tx: Sender<Update>,
+) -> std::io::Result<Arc<Mutex<Child>>> {
+    let mut cmd = backend.command(url, dir);
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .spawn()?;
+    let stdout = child.stdout.take().expect("stdout piped above");
+    let child = Arc::new(Mutex::new(child));
+    let waiter = Arc::clone(&child);
+
+    std::thread::spawn(move || {
+        for_each_line(stdout, |line| {
+            if let Some(p) = backend.parse(line) {
+                let _ = tx.send(Update::Progress(id, p));
+            }
+        });
+        // ponytail: lock is only contended by cancel, which happens before EOF.
+        let status = match waiter.lock().unwrap().wait() {
+            Ok(s) if s.success() => Status::Done,
+            Ok(s) => Status::Failed(format!("exit {}", s.code().unwrap_or(-1))),
+            Err(e) => Status::Failed(e.to_string()),
+        };
+        let _ = tx.send(Update::Finished(id, status));
+    });
+
+    Ok(child)
+}

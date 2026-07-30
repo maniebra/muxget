@@ -15,10 +15,21 @@ pub enum Status {
 
 #[derive(Debug, Clone)]
 pub struct Download {
+    /// Stable across removals — worker threads report against this, not an index.
+    pub id: usize,
     pub url: String,
     pub backend: &'static str,
     pub status: Status,
     pub progress: Progress,
+    pub child: Option<std::sync::Arc<std::sync::Mutex<std::process::Child>>>,
+}
+
+impl Download {
+    pub fn kill(&mut self) {
+        if let Some(child) = self.child.take() {
+            let _ = child.lock().unwrap().kill();
+        }
+    }
 }
 
 /// What a worker thread reports back to the controller.

@@ -1,5 +1,5 @@
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style, Stylize};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
     Block, Cell, Gauge, Padding, Paragraph, Row, Sparkline, Table, TableState, Wrap,
@@ -63,6 +63,8 @@ pub fn draw(f: &mut Frame, app: &App) {
         draw_details(f, app, area);
     }
     draw_footer(f, app, footer);
+    // Last, so the popover sits on top of everything.
+    crate::views::dialog::draw(f, app);
 }
 
 /// Bordered panel on the sidebar/alt background.
@@ -268,32 +270,29 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let widget = match &app.input {
-        Some(buf) => Paragraph::new(Line::from(vec![
-            Span::styled("url ▸ ", Style::default().fg(t.muted).bg(t.panel)),
-            Span::styled(format!("{buf}▏"), Style::default().fg(t.accent).bg(t.panel).bold()),
-        ]))
-        .block(panel(t, "add — Enter to start, Esc to cancel", t.panel)),
-        None => {
-            let keys: &[(&str, &str)] = if area.width >= 70 {
-                &[("a", "add"), ("x", "cancel"), ("j/k", "select"), ("Tab", "filter"), ("t", "theme"), ("q", "quit")]
-            } else {
-                &[("a", "add"), ("x", "cancel"), ("Tab", "filter"), ("q", "quit")]
-            };
-            let mut spans = Vec::new();
-            for (key, label) in keys {
-                spans.push(Span::styled(
-                    format!(" {key} "),
-                    Style::default().fg(t.bg).bg(t.accent).add_modifier(Modifier::BOLD),
-                ));
-                spans.push(Span::styled(format!(" {label}  "), Style::default().fg(t.muted).bg(t.panel)));
-            }
-            spans.push(Span::styled(app.message.clone(), Style::default().fg(t.ok).bg(t.panel)));
-            Paragraph::new(Line::from(spans))
-                .block(panel(t, &format!("theme: {}", t.name), t.panel).padding(Padding::horizontal(1)))
-        }
+    let keys: &[(&str, &str)] = if area.width >= 86 {
+        &[("a", "add"), ("e", "edit"), ("d", "delete"), ("x", "stop"), ("j/k", "select"), ("Tab", "filter"), ("t", "theme"), ("q", "quit")]
+    } else if area.width >= 60 {
+        &[("a", "add"), ("e", "edit"), ("d", "delete"), ("Tab", "filter"), ("q", "quit")]
+    } else {
+        &[("a", "add"), ("d", "delete"), ("q", "quit")]
     };
-    f.render_widget(widget, area);
+
+    let mut spans = Vec::new();
+    for (key, label) in keys {
+        spans.push(Span::styled(
+            format!(" {key} "),
+            Style::default().fg(t.bg).bg(t.accent).add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(format!(" {label}  "), Style::default().fg(t.muted).bg(t.panel)));
+    }
+    spans.push(Span::styled(app.message.clone(), Style::default().fg(t.ok).bg(t.panel)));
+
+    f.render_widget(
+        Paragraph::new(Line::from(spans))
+            .block(panel(t, &format!("theme: {}", t.name), t.panel).padding(Padding::horizontal(1))),
+        area,
+    );
 }
 
 /// Filename from the url, falling back to the url itself.

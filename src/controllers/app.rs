@@ -1,7 +1,5 @@
 use std::path::PathBuf;
-use std::process::Child;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
@@ -46,7 +44,7 @@ pub struct App {
     pub dir: PathBuf,
     pub downloads: Vec<Download>,
     pub selected: usize,
-    pub input: Option<String>,
+    pub dialog: Option<Dialog>,
     pub message: String,
     pub filter: Filter,
     pub theme: Theme,
@@ -54,9 +52,20 @@ pub struct App {
     /// Aggregate bytes/s, newest last, for the sparkline.
     pub history: Vec<u64>,
     ticked: Instant,
-    children: Vec<Option<Arc<Mutex<Child>>>>,
+    next_id: usize,
     tx: Sender<Update>,
     rx: Receiver<Update>,
+}
+
+/// Modal state. `Some` means the popover is up and owns the keyboard.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Dialog {
+    /// New url being typed.
+    Add(String),
+    /// Editing the url of the download at this index; edit restarts it.
+    Edit(usize, String),
+    /// Confirming removal of the download at this index.
+    Delete(usize),
 }
 
 impl App {
@@ -66,14 +75,14 @@ impl App {
             dir,
             downloads: Vec::new(),
             selected: 0,
-            input: None,
+            dialog: None,
             message: String::new(),
             filter: Filter::All,
+            next_id: 0,
             theme: Theme::saved().unwrap_or_default(),
             themes: Theme::all(),
             history: Vec::new(),
             ticked: Instant::now(),
-            children: Vec::new(),
             tx,
             rx,
         }
@@ -88,38 +97,86 @@ impl App {
             self.message = format!("no backend accepts {url}");
             return;
         };
-        let id = self.downloads.len();
+        let id = self.next_id;
+        self.next_id += 1;
         let name = backend.name();
         match backend::run(backend, url, &self.dir, id, self.tx.clone()) {
             Ok(child) => {
                 self.downloads.push(Download {
+                    id,
                     url: url.to_string(),
                     backend: name,
                     status: Status::Running,
                     progress: Default::default(),
+                    child: Some(child),
                 });
-                self.children.push(Some(child));
                 self.message = format!("started {url}");
             }
             Err(e) => self.message = format!("{name} failed to start: {e}"),
         }
     }
 
-    pub fn cancel(&mut self, id: usize) {
-        if let Some(Some(child)) = self.children.get(id) {
-            let _ = child.lock().unwrap().kill();
-            self.downloads[id].status = Status::Cancelled;
+    /// Stop the download but keep the row.
+    pub fn cancel(&mut self, at: usize) {
+        if let Some(d) = self.downloads.get_mut(at) {
+            if d.status == Status::Running {
+                d.kill();
+                d.status = Status::Cancelled;
+            }
         }
+    }
+
+    /// Restart the download at `at` under a new url.
+    pub fn edit(&mut self, at: usize, url: &str) {
+        if self.downloads.get(at).is_none() {
+            return;
+        }
+        self.delete(at);
+        self.add(url);
+    }
+
+    /// Stop and forget the download; the worker thread's later updates are
+    /// looked up by id, so removing a row cannot misroute them.
+    pub fn delete(&mut self, at: usize) {
+        if at >= self.downloads.len() {
+            return;
+        }
+        self.downloads[at].kill();
+        self.downloads.remove(at);
+        self.clamp_selection();
+    }
+
+    fn clamp_selection(&mut self) {
+        let visible = self.visible();
+        if !visible.contains(&self.selected) {
+            self.selected = visible
+                .iter()
+                .rev()
+                .find(|i| **i <= self.selected)
+                .or(visible.first())
+                .copied()
+                .unwrap_or(0);
+        }
+    }
+
+    fn find(&mut self, id: usize) -> Option<&mut Download> {
+        self.downloads.iter_mut().find(|d| d.id == id)
     }
 
     fn drain(&mut self) {
         while let Ok(update) = self.rx.try_recv() {
             match update {
-                Update::Progress(id, p) => self.downloads[id].progress = p,
+                Update::Progress(id, p) => {
+                    if let Some(d) = self.find(id) {
+                        d.progress = p;
+                    }
+                }
                 Update::Finished(id, s) => {
-                    self.children[id] = None;
-                    if self.downloads[id].status == Status::Running {
-                        self.downloads[id].status = s;
+                    if let Some(d) = self.find(id) {
+                        d.child = None;
+                        if d.status == Status::Running {
+                            d.status = s;
+                        }
                     }
                 }
             }
@@ -194,44 +251,89 @@ impl App {
                 continue;
             }
 
-            match self.input.take() {
-                Some(mut buf) => match key.code {
-                    KeyCode::Enter => self.add(&buf),
-                    KeyCode::Esc => {}
-                    KeyCode::Backspace => {
-                        buf.pop();
-                        self.input = Some(buf);
-                    }
-                    KeyCode::Char(c) => {
-                        buf.push(c);
-                        self.input = Some(buf);
-                    }
-                    _ => self.input = Some(buf),
-                },
-                None => match key.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Char('a') => self.input = Some(String::new()),
-                    KeyCode::Char('x') => self.cancel(self.selected),
-                    KeyCode::Char('t') => {
-                        self.theme = self.theme.next(&self.themes);
-                        self.theme.save();
-                        self.message = format!("theme: {}", self.theme.name);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
-                    KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
-                    KeyCode::Tab | KeyCode::Char('f') => {
-                        let i = Filter::ALL.iter().position(|f| *f == self.filter).unwrap_or(0);
-                        self.set_filter(Filter::ALL[(i + 1) % Filter::ALL.len()]);
-                    }
-                    _ => {}
-                },
+            if self.on_key(key.code) {
+                break;
             }
         }
 
         // Children are ours; do not orphan them on exit.
-        for child in self.children.iter().flatten() {
-            let _ = child.lock().unwrap().kill();
+        for d in &mut self.downloads {
+            d.kill();
         }
         Ok(())
+    }
+
+    /// Handle one keypress. Returns true when the app should quit.
+    /// An open dialog owns the keyboard until it closes.
+    pub fn on_key(&mut self, key: KeyCode) -> bool {
+        match self.dialog.take() {
+            Some(Dialog::Delete(at)) => match key {
+                KeyCode::Enter | KeyCode::Char('y') => self.delete(at),
+                KeyCode::Esc | KeyCode::Char('n') => {}
+                _ => self.dialog = Some(Dialog::Delete(at)),
+            },
+            Some(Dialog::Add(buf)) => {
+                if let Some(text) = self.type_into(buf, key, Dialog::Add) {
+                    self.add(&text);
+                }
+            }
+            Some(Dialog::Edit(at, buf)) => {
+                if let Some(text) = self.type_into(buf, key, |b| Dialog::Edit(at, b)) {
+                    self.edit(at, &text);
+                }
+            }
+            None => match key {
+                KeyCode::Char('q') => return true,
+                KeyCode::Char('a') => self.dialog = Some(Dialog::Add(String::new())),
+                KeyCode::Char('e') => {
+                    if let Some(d) = self.downloads.get(self.selected) {
+                        self.dialog = Some(Dialog::Edit(self.selected, d.url.clone()));
+                    }
+                }
+                KeyCode::Char('d') | KeyCode::Delete => {
+                    if self.downloads.get(self.selected).is_some() {
+                        self.dialog = Some(Dialog::Delete(self.selected));
+                    }
+                }
+                KeyCode::Char('x') => self.cancel(self.selected),
+                KeyCode::Char('t') => {
+                    self.theme = self.theme.next(&self.themes);
+                    self.theme.save();
+                    self.message = format!("theme: {}", self.theme.name);
+                }
+                KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
+                KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
+                KeyCode::Tab | KeyCode::Char('f') => {
+                    let i = Filter::ALL.iter().position(|f| *f == self.filter).unwrap_or(0);
+                    self.set_filter(Filter::ALL[(i + 1) % Filter::ALL.len()]);
+                }
+                _ => {}
+            },
+        }
+        false
+    }
+
+    /// Text-field keys shared by the add and edit dialogs. Returns the text on
+    /// Enter; otherwise reopens the dialog through `reopen` with the new buffer.
+    fn type_into(
+        &mut self,
+        mut buf: String,
+        key: KeyCode,
+        reopen: impl Fn(String) -> Dialog,
+    ) -> Option<String> {
+        match key {
+            KeyCode::Enter => return Some(buf),
+            KeyCode::Esc => {}
+            KeyCode::Backspace => {
+                buf.pop();
+                self.dialog = Some(reopen(buf));
+            }
+            KeyCode::Char(c) => {
+                buf.push(c);
+                self.dialog = Some(reopen(buf));
+            }
+            _ => self.dialog = Some(reopen(buf)),
+        }
+        None
     }
 }

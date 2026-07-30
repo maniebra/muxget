@@ -19,6 +19,16 @@ fn ytdlp_progress_line() {
 }
 
 #[test]
+fn byte_sizes_round_trip() {
+    assert_eq!(parse::bytes("5.0MiB/s"), Some(5.0 * 1024.0 * 1024.0));
+    assert_eq!(parse::bytes("512KB"), Some(512.0 * 1024.0));
+    assert_eq!(parse::bytes("900"), Some(900.0));
+    assert_eq!(parse::bytes(""), None);
+    assert_eq!(parse::human(5.0 * 1024.0 * 1024.0), "5.0MiB");
+    assert_eq!(parse::human(0.0), "0.0B");
+}
+
+#[test]
 fn splits_on_carriage_returns_and_newlines() {
     let mut got = Vec::new();
     parse::for_each_line(&b"a\rb\nc\r\n\r\nd"[..], |l| got.push(l.to_string()));

@@ -22,3 +22,11 @@ path = "tests/utils/parse.rs"
 [[test]]
 name = "models_backend"
 path = "tests/models/backend.rs"
+
+[[test]]
+name = "controllers_app"
+path = "tests/controllers/app.rs"
+
+[[test]]
+name = "views_theme"
+path = "tests/views/theme.rs"

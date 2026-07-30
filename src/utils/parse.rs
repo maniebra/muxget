@@ -36,6 +36,33 @@ pub fn ytdlp(line: &str) -> Option<Progress> {
     })
 }
 
+/// `5.0MiB`, `1.2GiB/s`, `512KB` -> bytes. Both tools use binary prefixes.
+pub fn bytes(s: &str) -> Option<f64> {
+    let s = s.trim().trim_end_matches("/s");
+    let split = s.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(s.len());
+    let n: f64 = s[..split].parse().ok()?;
+    let scale = match s[split..].trim().chars().next().map(|c| c.to_ascii_uppercase()) {
+        Some('K') => 1024.0,
+        Some('M') => 1024f64.powi(2),
+        Some('G') => 1024f64.powi(3),
+        Some('T') => 1024f64.powi(4),
+        _ => 1.0,
+    };
+    Some(n * scale)
+}
+
+/// `5.0MiB` for 5242880.
+pub fn human(n: f64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut n = n;
+    let mut unit = 0;
+    while n >= 1024.0 && unit < UNITS.len() - 1 {
+        n /= 1024.0;
+        unit += 1;
+    }
+    format!("{n:.1}{}", UNITS[unit])
+}
+
 /// Value after `key`, up to the next space or `]`.
 fn field(line: &str, key: &str) -> Option<String> {
     let rest = line.split_once(key)?.1;

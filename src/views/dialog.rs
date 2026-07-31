@@ -109,7 +109,8 @@ pub fn draw(f: &mut Frame, app: &App) {
         ),
     };
 
-    let area = centered(f.area(), 76, 9);
+    // The add form is taller: five fields plus the preview under them.
+    let area = centered(f.area(), 76, if matches!(dialog, Dialog::Add(_)) { 16 } else { 9 });
     // Clear so the list underneath does not bleed through the popover.
     f.render_widget(Clear, area);
     f.render_widget(
@@ -184,8 +185,14 @@ fn field<'a>(t: &Theme, buf: &str) -> Vec<Line<'a>> {
 /// One line per field; only the focused one shows a caret. The three override
 /// fields say what leaving them empty means, so the form documents itself.
 fn form_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
-    let hints = ["", "the download directory", "the backend's choice", "no limit"];
-    FORM_LABELS
+    let hints = [
+        "",
+        "one item — e.g. 1-10 with %d or %03d in the url",
+        "the download directory",
+        "the backend's choice",
+        "no limit",
+    ];
+    let mut lines: Vec<Line> = FORM_LABELS
         .iter()
         .enumerate()
         .map(|(i, label)| {
@@ -209,7 +216,50 @@ fn form_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
                 ),
             ])
         })
-        .collect()
+        .collect();
+    lines.push(Line::default());
+    lines.extend(preview(t, form));
+    lines
+}
+
+/// What the form would actually add. Shows the first two and the last url so
+/// a wrong pattern is obvious before anything is queued.
+fn preview<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
+    let urls = form.urls();
+    if urls.iter().all(|u| u.is_empty()) {
+        return vec![];
+    }
+    let count = urls.len();
+    let mut lines = vec![Line::styled(
+        if count == 1 {
+            "preview".to_string()
+        } else {
+            format!("preview — {count} downloads")
+        },
+        Style::default().fg(t.muted),
+    )];
+    // The middle is elided; the ends are what show a bad pattern.
+    let shown: Vec<usize> = if count <= 3 {
+        (0..count).collect()
+    } else {
+        vec![0, 1, count - 1]
+    };
+    for (n, i) in shown.iter().enumerate() {
+        if n == 2 && count > 3 {
+            lines.push(Line::styled("  …", Style::default().fg(t.muted)));
+        }
+        lines.push(Line::styled(
+            format!("  {}", urls[*i]),
+            Style::default().fg(t.fg),
+        ));
+    }
+    if count as i64 == crate::utils::MAX_EXPANSION {
+        lines.push(Line::styled(
+            format!("  capped at {} items", crate::utils::MAX_EXPANSION),
+            Style::default().fg(t.err),
+        ));
+    }
+    lines
 }
 
 fn named<'a>(t: &Theme, label: &str, buf: &str) -> Vec<Line<'a>> {

@@ -65,3 +65,7 @@ path = "tests/views/theme.rs"
 [[test]]
 name = "views_ui"
 path = "tests/views/ui.rs"
+
+[[test]]
+name = "utils_pattern"
+path = "tests/utils/pattern.rs"

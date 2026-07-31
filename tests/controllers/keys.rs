@@ -142,6 +142,7 @@ fn the_add_form_carries_per_item_settings_into_the_download() {
     let mut app = app_with(&[]);
     app.on_key(KeyCode::Char('a'));
     typed(&mut app, "https://example.com/a.iso");
+    app.on_key(Tab); // range — left empty
     app.on_key(Tab);
     typed(&mut app, "/tmp/here");
     app.on_key(Tab);
@@ -160,4 +161,30 @@ fn the_add_form_carries_per_item_settings_into_the_download() {
     // A plain add leaves every override empty.
     app.add("https://example.com/b.iso");
     assert!(app.downloads[1].over.is_empty());
+}
+
+#[test]
+fn a_pattern_and_range_add_one_download_per_number() {
+    use crossterm::event::KeyCode::Tab;
+
+    let mut app = app_with(&[]);
+    app.on_key(KeyCode::Char('a'));
+    typed(&mut app, "https://example.com/f%02d.iso");
+    app.on_key(Tab);
+    typed(&mut app, "1-3");
+    app.on_key(Tab);
+    app.on_key(Tab);
+    typed(&mut app, "local%d.iso"); // the name follows the same number
+    app.on_key(KeyCode::Enter);
+
+    let urls: Vec<&str> = app.downloads.iter().map(|d| d.url.as_str()).collect();
+    assert_eq!(
+        urls,
+        [
+            "https://example.com/f01.iso",
+            "https://example.com/f02.iso",
+            "https://example.com/f03.iso"
+        ]
+    );
+    assert_eq!(app.downloads[2].over.name, "local3.iso");
 }

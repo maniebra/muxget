@@ -4,15 +4,17 @@ use crate::controllers::app::App;
 use crate::controllers::downloads::Filter;
 use crate::controllers::options::Options;
 use crate::models::download::Overrides;
+use crate::utils;
 
 /// The add dialog's fields, in display order. The url is required; the rest
 /// are per-download overrides and stay empty unless typed into.
-pub const FORM_LABELS: [&str; 4] = ["url", "directory", "file name", "rate limit"];
+pub const FORM_LABELS: [&str; 5] =
+    ["url", "range", "directory", "file name", "rate limit"];
 
 /// A url plus the settings that will apply to that download alone.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Form {
-    pub fields: [String; 4],
+    pub fields: [String; 5],
     /// Which field the keyboard is typing into.
     pub cursor: usize,
 }
@@ -20,10 +22,16 @@ pub struct Form {
 impl Form {
     pub fn overrides(&self) -> Overrides {
         Overrides {
-            dir: self.fields[1].trim().to_string(),
-            name: self.fields[2].trim().to_string(),
-            rate: self.fields[3].trim().to_string(),
+            dir: self.fields[2].trim().to_string(),
+            name: self.fields[3].trim().to_string(),
+            rate: self.fields[4].trim().to_string(),
         }
+    }
+
+    /// Every url this form will add: one per number in the range, or just the
+    /// url when there is no range.
+    pub fn urls(&self) -> Vec<String> {
+        utils::expand(self.fields[0].trim(), &self.fields[1])
     }
 }
 
@@ -152,8 +160,16 @@ impl App {
             },
             Dialog::Add(mut form) => match key {
                 KeyCode::Enter => {
-                    let (url, over) = (form.fields[0].clone(), form.overrides());
-                    self.add_with(&url, over);
+                    let (over, range) = (form.overrides(), form.fields[1].clone());
+                    for (i, url) in form.urls().iter().enumerate() {
+                        // The name override gets the same number as its url,
+                        // or every item in the range would fight for one file.
+                        let mut over = over.clone();
+                        if let Some((from, _)) = utils::parse_range(&range) {
+                            over.name = utils::fill(&over.name, from + i as i64);
+                        }
+                        self.add_with(url, over);
+                    }
                 }
                 KeyCode::Esc => {}
                 KeyCode::Tab | KeyCode::Down => {

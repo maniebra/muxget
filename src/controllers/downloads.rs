@@ -3,7 +3,7 @@ use std::process::Stdio;
 use crate::controllers::app::App;
 use crate::models::download::{Download, Overrides, Progress, Status, Update};
 use crate::models::state::SavedDownload;
-use crate::models::{aria2, backend, pick, queue, ytdlp};
+use crate::models::{self, aria2, backend, pick, queue, ytdlp};
 use crate::utils::parse::{bytes, for_each_line};
 
 /// Which rows the list shows.
@@ -62,9 +62,68 @@ impl App {
         self.enqueue(url, queue, over);
     }
 
+    /// Apply the first rule the url matches: its queue (created if it does not
+    /// exist yet), its directory, its backend. Anything the rule leaves out,
+    /// and anything typed into the add form, stays as it was.
+    fn route(&mut self, url: &str, queue: usize, over: &mut Overrides) -> usize {
+        // Size rules wait for a total; applying one here would route every
+        // download to it, whatever it turns out to weigh.
+        let rule = self
+            .rules
+            .iter()
+            .find(|r| r.min_size.is_none() && r.matches(url))
+            .cloned();
+        let Some(rule) = rule else {
+            return queue;
+        };
+        if over.dir.is_empty() {
+            if let Some(dir) = &rule.directory {
+                over.dir = crate::utils::expand_home(dir);
+            }
+        }
+        if let Some(name) = &rule.backend {
+            over.backend = name.clone();
+        }
+        match &rule.queue {
+            Some(name) => self.queue_named(name),
+            None => queue,
+        }
+    }
+
+    /// The queue with this name, creating it if the rules mention one that
+    /// does not exist yet — a category should not need setting up by hand.
+    fn queue_named(&mut self, name: &str) -> usize {
+        if let Some(q) = self.queues.iter().find(|q| q.name == name) {
+            return q.id;
+        }
+        let id = self.next_queue_id;
+        self.next_queue_id += 1;
+        self.queues.push(queue::Queue::new(id, name, 3));
+        id
+    }
+
+    /// Move a download to the queue of the first size rule it now satisfies.
+    pub fn route_by_size(&mut self, id: usize, total: f64) {
+        let Some(at) = self.downloads.iter().position(|d| d.id == id) else { return };
+        let url = self.downloads[at].url.clone();
+        let rule = self
+            .rules
+            .iter()
+            .find(|r| r.min_size.is_some() && r.matches(&url) && r.wants_size(total))
+            .cloned();
+        let Some(name) = rule.and_then(|r| r.queue) else { return };
+        let to = self.queue_named(&name);
+        if self.downloads[at].queue != to {
+            self.downloads[at].queue = to;
+            self.message = format!("{url} routed to {name}");
+            self.save_state();
+        }
+    }
+
     /// Add one url to `queue`. It starts as soon as that queue has a slot.
-    pub(crate) fn enqueue(&mut self, url: &str, queue: usize, over: Overrides) {
-        let Some(backend) = pick(url) else {
+    pub(crate) fn enqueue(&mut self, url: &str, queue: usize, mut over: Overrides) {
+        let queue = self.route(url, queue, &mut over);
+        let Some(backend) = backend_for(url, &over) else {
             self.message = format!("no backend accepts {url}");
             return;
         };
@@ -128,7 +187,7 @@ impl App {
     pub fn restore(&mut self, saved: &[SavedDownload]) {
         let known: Vec<usize> = self.queues.iter().map(|q| q.id).collect();
         for s in saved {
-            let Some(backend) = pick(&s.url) else { continue };
+            let Some(backend) = backend_for(&s.url, &s.over) else { continue };
             let id = self.next_id;
             self.next_id += 1;
             self.downloads.push(Download {
@@ -170,7 +229,7 @@ impl App {
             Some(d) => (d.id, d.url.clone(), d.over.clone()),
             None => return,
         };
-        let Some(backend) = pick(&url) else { return };
+        let Some(backend) = backend_for(&url, &over) else { return };
         let name = backend.name();
         match backend::run(backend, &url, &self.dir, &over, id, self.tx.clone()) {
             Ok(pid) => {
@@ -409,5 +468,14 @@ impl App {
                 .copied()
                 .unwrap_or(0);
         }
+    }
+}
+
+/// The backend a download runs on: the one a rule named, else the first that
+/// claims the url.
+fn backend_for(url: &str, over: &Overrides) -> Option<Box<dyn backend::Backend>> {
+    match over.backend.is_empty() {
+        true => pick(url),
+        false => models::named(&over.backend).or_else(|| pick(url)),
     }
 }

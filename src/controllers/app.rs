@@ -10,6 +10,7 @@ use crate::controllers::keys::Dialog;
 use crate::controllers::options::Options;
 use crate::models::download::{Download, Status, Update};
 use crate::models::queue::Queue;
+use crate::models::rule::{self, Rule};
 use crate::models::state::State;
 use crate::views;
 use crate::views::theme::Theme;
@@ -33,6 +34,8 @@ pub struct App {
     pub theme: Theme,
     /// Use nerd font glyphs for status icons.
     pub nerd: bool,
+    /// Routing rules, read once at startup.
+    pub rules: Vec<Rule>,
     pub themes: Vec<Theme>,
     /// Aggregate bytes/s, newest last, for the sparkline.
     pub history: Vec<u64>,
@@ -87,6 +90,7 @@ impl App {
             next_queue_id,
             theme: Theme::saved().unwrap_or_default(),
             nerd: false,
+            rules: rule::load(),
             themes: Theme::all(),
             history: Vec::new(),
             ticked: Instant::now(),
@@ -129,8 +133,13 @@ impl App {
         while let Ok(update) = self.rx.try_recv() {
             match update {
                 Update::Progress(id, p) => {
+                    let total = crate::utils::parse::bytes(&p.total);
                     if let Some(d) = self.find(id) {
                         d.progress = p;
+                    }
+                    // Size rules can only be answered once a total is known.
+                    if let Some(total) = total {
+                        self.route_by_size(id, total);
                     }
                 }
                 Update::Located(id, path) => {

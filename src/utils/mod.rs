@@ -128,3 +128,15 @@ pub fn reap(pid: u32, name: &str) -> bool {
     }
     crate::models::download::signal(pid, "-KILL")
 }
+
+/// Only `~`, which is what a typed path actually needs; the shell is not
+/// involved here so nothing else would be expanded anyway.
+pub fn expand_home(path: &str) -> String {
+    match path.strip_prefix('~') {
+        Some(rest) => {
+            let home = std::env::var("HOME").unwrap_or_default();
+            format!("{home}{rest}")
+        }
+        None => path.to_string(),
+    }
+}

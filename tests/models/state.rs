@@ -111,6 +111,7 @@ fn per_item_settings_round_trip_and_stay_optional() {
         name: "mine.iso".into(),
         rate: "2M".into(),
         user: "me".into(),
+        backend: "aria2c".into(),
         pass: "hunter2".into(),
     };
     let plain = row(0, Status::Done, "https://example.com/b.iso");
@@ -124,6 +125,7 @@ fn per_item_settings_round_trip_and_stay_optional() {
     assert_eq!(back.downloads[0].over.dir, "/tmp/here");
     assert_eq!(back.downloads[0].over.rate, "2M");
     assert_eq!(back.downloads[0].over.user, "me");
+    assert_eq!(back.downloads[0].over.backend, "aria2c");
     assert_eq!(back.downloads[0].over.pass, "", "a password is never stored");
     assert!(back.downloads[1].over.is_empty(), "no line written when unset");
 

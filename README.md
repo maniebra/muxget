@@ -83,6 +83,36 @@ lane never blocks another. New downloads land in the queue you are viewing.
 Deleting a queue moves its downloads to the default one rather than dropping
 them; the default queue itself cannot be deleted.
 
+## Routing rules
+
+New downloads land in the queue you are viewing — unless a rule says otherwise.
+`~/.config/muxget/rules` matches on file extension, domain or size and picks
+the queue, the directory, or the backend for you. Queues named by a rule are
+created on first use.
+
+```toml
+# ~/.config/muxget/rules
+[[rule]]
+extensions = ["iso", "img"]
+queue = "large-files"
+directory = "~/Downloads/ISOs"
+
+[[rule]]
+domains = ["youtube.com", "youtu.be"]
+queue = "media"
+
+[[rule]]
+min_size = "5G"
+queue = "overnight"
+```
+
+The first matching rule wins, and every condition it sets has to match — a rule
+with both `extensions` and `domains` means "this kind of file, from there".
+Anything typed into the add form beats a rule.
+
+`min_size` cannot be answered before the download starts, so those rules are
+applied once the backend reports a total and the download moves queue then.
+
 ## Backend options
 
 `sa` and `sy` open a form over the common aria2c and yt-dlp options: `Enter`
@@ -113,10 +143,10 @@ always starts clear.
 ```
 # ~/.config/muxget/state
 dir = /home/you/Downloads
-queue = default|3
-queue = media|7
-download = 0|done|https://example.com/linux.iso
-download = 1|queued|https://youtube.com/watch?v=abc
+queue = default|3||0
+queue = media|7|22:00-06:00|1
+download = 0|done|100|https://example.com/linux.iso
+download = 1|queued|12.5|https://youtube.com/watch?v=abc
 ```
 
 ## Themes

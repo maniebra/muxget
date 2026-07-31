@@ -30,25 +30,35 @@ impl Options {
 
     /// Current value: `None` when unset, `Some("")` for an enabled bare flag.
     pub fn value(&self, flag: &str) -> Option<&str> {
+        let (name, _) = split(flag);
         self.pairs
             .iter()
-            .find(|(f, _)| f == flag)
+            .find(|(f, _)| f == name)
             .map(|(_, v)| v.as_str())
     }
 
+    /// A spec may carry its value (`--seed-time=0`) while the file stores it
+    /// split, so a match is on the name and — when the spec pins one — the
+    /// value too.
     pub fn is_set(&self, flag: &str) -> bool {
-        self.value(flag).is_some()
+        let (name, want) = split(flag);
+        self.pairs
+            .iter()
+            .any(|(f, v)| f == name && (want.is_empty() || v == want))
     }
 
     fn set(&mut self, flag: &str, value: &str) {
-        match self.pairs.iter_mut().find(|(f, _)| f == flag) {
+        let (name, pinned) = split(flag);
+        let value = if value.is_empty() { pinned } else { value };
+        match self.pairs.iter_mut().find(|(f, _)| f == name) {
             Some(pair) => pair.1 = value.to_string(),
-            None => self.pairs.push((flag.to_string(), value.to_string())),
+            None => self.pairs.push((name.to_string(), value.to_string())),
         }
     }
 
     pub fn unset(&mut self, flag: &str) {
-        self.pairs.retain(|(f, _)| f != flag);
+        let (name, _) = split(flag);
+        self.pairs.retain(|(f, _)| f != name);
     }
 
     pub fn toggle(&mut self, flag: &str) {
@@ -63,7 +73,7 @@ impl Options {
     pub fn unknown(&self) -> Vec<&(String, String)> {
         self.pairs
             .iter()
-            .filter(|(f, _)| !self.specs().iter().any(|s| s.flag == f))
+            .filter(|(f, _)| !self.specs().iter().any(|s| split(s.flag).0 == f))
             .collect()
     }
 
@@ -121,5 +131,13 @@ impl Options {
 
     pub fn save(&self) -> std::io::Result<()> {
         args::save(self.backend, &args::render(&self.pairs))
+    }
+}
+
+/// A spec flag as (name, pinned value); the value is empty for a bare flag.
+fn split(flag: &str) -> (&str, &str) {
+    match flag.split_once('=') {
+        Some((name, value)) => (name, value),
+        None => (flag, ""),
     }
 }

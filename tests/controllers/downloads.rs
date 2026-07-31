@@ -246,3 +246,42 @@ fn a_download_moves_within_its_queue_and_changes_what_starts_next() {
     app.move_download(-1);
     assert_eq!(app.downloads[0].id, last);
 }
+
+#[test]
+fn rules_route_new_downloads_by_url_and_by_size() {
+    use muxget::models::rule::parse;
+
+    let mut app = app_with(&[]);
+    app.queues[0].paused = true;
+    app.rules = parse(
+        "[[rule]]\nextensions = [\"iso\"]\nqueue = \"large-files\"\ndirectory = \"/tmp/isos\"\n\
+         [[rule]]\ndomains = [\"youtube.com\"]\nqueue = \"media\"\nbackend = \"yt-dlp\"\n\
+         [[rule]]\nmin_size = \"5G\"\nqueue = \"overnight\"\n",
+    );
+
+    app.add("https://example.com/arch.iso");
+    let large = queue_id(&app, "large-files");
+    assert_eq!(app.downloads[0].queue, large);
+    assert_eq!(app.downloads[0].over.dir, "/tmp/isos");
+
+    app.add("https://www.youtube.com/watch?v=abc");
+    assert_eq!(app.downloads[1].queue, queue_id(&app, "media"));
+    assert_eq!(app.downloads[1].over.backend, "yt-dlp");
+
+    // An unmatched url stays in the queue being viewed.
+    app.add("https://example.com/notes.txt");
+    assert_eq!(app.downloads[2].queue, app.queues[0].id);
+
+    // Size is only known once the backend reports it.
+    let id = app.downloads[2].id;
+    app.route_by_size(id, 6.0 * 1024.0 * 1024.0 * 1024.0);
+    assert_eq!(app.downloads[2].queue, queue_id(&app, "overnight"));
+
+    // A small one is left where it is.
+    app.route_by_size(app.downloads[0].id, 1024.0);
+    assert_eq!(app.downloads[0].queue, large);
+}
+
+fn queue_id(app: &App, name: &str) -> usize {
+    app.queues.iter().find(|q| q.name == name).expect("queue created").id
+}

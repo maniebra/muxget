@@ -36,6 +36,8 @@ impl Form {
             dir: self.fields[2].trim().to_string(),
             name: self.fields[3].trim().to_string(),
             rate: self.fields[4].trim().to_string(),
+            // Only a rule sets this; the form has no field for it.
+            backend: String::new(),
             user: self.fields[5].trim().to_string(),
             // Not trimmed: a password's spaces are part of it.
             pass: self.fields[6].clone(),

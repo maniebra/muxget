@@ -49,6 +49,10 @@ name = "models_backend"
 path = "tests/models/backend.rs"
 
 [[test]]
+name = "models_rule"
+path = "tests/models/rule.rs"
+
+[[test]]
 name = "models_state"
 path = "tests/models/state.rs"
 

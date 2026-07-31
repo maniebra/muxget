@@ -106,3 +106,30 @@ fn x_unsets_the_selected_option() {
     p.on_key(KeyCode::Char('x'));
     assert!(!p.is_set("--user-agent"));
 }
+
+#[test]
+fn a_flag_that_carries_its_value_survives_a_round_trip() {
+    let mut p = panel();
+    go_to(&mut p, "--seed-time=0");
+    p.on_key(KeyCode::Enter);
+    assert!(p.is_set("--seed-time=0"));
+
+    // What the file holds, and what it looks like when read back.
+    let text = args::render(&p.pairs);
+    assert_eq!(text, "--seed-time=0");
+    let mut back = panel();
+    back.pairs = args::to_pairs(&args::parse(&text));
+    assert!(back.is_set("--seed-time=0"), "still ticked after a reload");
+    assert!(back.unknown().is_empty(), "and not mistaken for a stray flag");
+
+    // Toggling it off removes it rather than leaving a second copy behind.
+    back.cursor = p.cursor;
+    back.on_key(KeyCode::Enter);
+    assert!(!back.is_set("--seed-time=0"));
+    assert!(back.pairs.is_empty());
+
+    // A hand-set value the spec does not pin reads as unticked, not as this.
+    let mut other = panel();
+    other.pairs = args::to_pairs(&args::parse("--seed-time=120"));
+    assert!(!other.is_set("--seed-time=0"));
+}

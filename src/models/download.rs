@@ -33,6 +33,8 @@ pub struct Overrides {
     pub name: String,
     /// Speed cap, in whatever the backend accepts (`2M`, `500K`).
     pub rate: String,
+    /// Backend to use instead of the one the url would pick, from a rule.
+    pub backend: String,
     /// The password is never persisted and never reaches a command line.
     pub user: String,
     pub pass: String,

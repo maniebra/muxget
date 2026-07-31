@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::controllers::app::App;
 use crate::models::state::State;
+use crate::utils::expand_home;
 use crate::views::theme::Theme;
 
 /// Preferences: theme and download directory. Backend options live in
@@ -43,14 +44,4 @@ impl App {
     }
 }
 
-/// Only `~`, which is what a typed path actually needs; the shell is not
-/// involved here so nothing else would be expanded anyway.
-fn expand_home(path: &str) -> String {
-    match path.strip_prefix('~') {
-        Some(rest) => {
-            let home = std::env::var("HOME").unwrap_or_default();
-            format!("{home}{rest}")
-        }
-        None => path.to_string(),
-    }
-}
+

@@ -226,3 +226,23 @@ fn force_restart_is_refused_for_anything_but_a_torrent() {
     assert!(muxget::models::aria2::is_torrent("https://x.com/a.TORRENT"));
     assert!(!muxget::models::aria2::is_torrent("https://x.com/a.iso"));
 }
+
+#[test]
+fn a_download_moves_within_its_queue_and_changes_what_starts_next() {
+    let mut app = app_with(&[Status::Queued, Status::Queued, Status::Queued]);
+    app.queues[0].paused = true;
+    let last = app.downloads[2].id;
+
+    app.selected = 2;
+    app.move_download(-1);
+    assert_eq!(app.downloads[1].id, last, "moved up one place");
+    assert_eq!(app.downloads[app.selected].id, last, "selection follows it");
+
+    app.move_download(-1);
+    assert_eq!(app.downloads[0].id, last);
+    assert_eq!(app.next_queued(app.queues[0].id), Some(0), "it starts first now");
+
+    // The top and bottom hold.
+    app.move_download(-1);
+    assert_eq!(app.downloads[0].id, last);
+}

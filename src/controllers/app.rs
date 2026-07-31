@@ -62,7 +62,8 @@ impl App {
     /// not depend on whatever the last run happened to persist.
     pub fn with_queues(dir: PathBuf, queues: Vec<Queue>) -> Self {
         let (tx, rx) = channel();
-        let next_queue_id = queues.len();
+        // Ids outlive positions now, so the next one is past the highest.
+        let next_queue_id = queues.iter().map(|q| q.id + 1).max().unwrap_or(0);
         App {
             dir,
             downloads: Vec::new(),

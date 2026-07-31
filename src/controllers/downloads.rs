@@ -349,6 +349,20 @@ impl App {
             .sum()
     }
 
+    /// Move the selected row `delta` places within what is on screen. Order is
+    /// priority: `next_queued` starts the first waiting row it finds.
+    pub fn move_download(&mut self, delta: isize) {
+        let rows = self.visible();
+        let Some(at) = rows.iter().position(|i| *i == self.selected) else { return };
+        let Some(to) = at.checked_add_signed(delta).filter(|to| *to < rows.len()) else {
+            return;
+        };
+        self.downloads.swap(rows[at], rows[to]);
+        self.selected = rows[to];
+        self.save_state();
+        self.pump();
+    }
+
     /// Indices of the downloads shown: the current queue, current filter.
     pub fn visible(&self) -> Vec<usize> {
         let queue = self.queue().id;

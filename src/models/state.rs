@@ -56,7 +56,7 @@ impl State {
         State::parse(&std::fs::read_to_string(path()).unwrap_or_default())
     }
 
-    /// `dir = <path>`, `queue = <name>|<slots>|<window>`,
+    /// `dir = <path>`, `queue = <name>|<slots>|<window>|<id>`,
     /// `download = <queue>|<status>|<percent>|<url>`, optionally followed by
     /// `over = <dir>|<name>|<rate>|<user>` for the download above it — its
     /// own line, so a url containing `|` stays the last unsplit field.
@@ -77,9 +77,10 @@ impl State {
                         continue;
                     }
                     // Optional: files written before schedules existed.
-                    let (slots, window) = rest.split_once('|').unwrap_or((rest, ""));
-                    // Ids are positional: the first queue is always the default.
-                    let id = state.queues.len();
+                    let (slots, rest) = rest.split_once('|').unwrap_or((rest, ""));
+                    let (window, id) = rest.split_once('|').unwrap_or((rest, ""));
+                    // Older files have no id; there the order was the id.
+                    let id = id.trim().parse().unwrap_or(state.queues.len());
                     let mut q = Queue::new(id, name.trim(), slots.trim().parse().unwrap_or(3));
                     q.schedule = queue::parse_window(window);
                     state.queues.push(q);
@@ -133,7 +134,13 @@ impl State {
     pub fn render(dir: &Path, queues: &[Queue], downloads: &[Download], nerd: bool) -> String {
         let mut text = format!("dir = {}\nnerd = {nerd}\n", dir.display());
         for q in queues {
-            text.push_str(&format!("queue = {}|{}|{}\n", q.name, q.max_active, q.window()));
+            text.push_str(&format!(
+                "queue = {}|{}|{}|{}\n",
+                q.name,
+                q.max_active,
+                q.window(),
+                q.id
+            ));
         }
         for d in downloads {
             text.push_str(&format!(

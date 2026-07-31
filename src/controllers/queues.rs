@@ -153,6 +153,21 @@ impl App {
         }
     }
 
+    /// Move the current queue `delta` places in the tab order. Downloads
+    /// reference queues by id, so reordering never moves a download.
+    pub fn move_queue(&mut self, delta: isize) {
+        let Some(to) = self
+            .current
+            .checked_add_signed(delta)
+            .filter(|to| *to < self.queues.len())
+        else {
+            return;
+        };
+        self.queues.swap(self.current, to);
+        self.current = to;
+        self.save_state();
+    }
+
     /// Switch the viewed queue by `delta` places.
     pub fn cycle_queue(&mut self, delta: isize) {
         let n = self.queues.len() as isize;

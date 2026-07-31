@@ -195,3 +195,21 @@ fn a_schedule_pauses_outside_its_window_and_resumes_inside() {
     assert_eq!(app.queues[0].schedule, None);
     assert!(app.queues[0].open_at(0), "no window means always open");
 }
+
+#[test]
+fn queues_reorder_without_moving_their_downloads() {
+    let mut app = app_with(&[Status::Queued]);
+    app.add_queue("media");
+    let media = app.queue().id;
+    app.downloads[0].queue = media;
+
+    app.move_queue(-1);
+    assert_eq!(app.current, 0, "the moved queue stays selected");
+    let names: Vec<&str> = app.queues.iter().map(|q| q.name.as_str()).collect();
+    assert_eq!(names, ["media", "default"]);
+    assert_eq!(app.downloads[0].queue, media, "membership is by id, not position");
+
+    // The ends do not wrap; there is nowhere further to go.
+    app.move_queue(-1);
+    assert_eq!(app.queues[0].name, "media");
+}

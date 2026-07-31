@@ -17,13 +17,16 @@ recommends = "aria2, yt-dlp"
 section = "net"
 
 [package.metadata.generate-rpm]
-recommends = ["aria2", "yt-dlp"]
 # `--target` rewrites this prefix to the cross-built path.
 assets = [
     { source = "target/release/muxget", dest = "/usr/bin/muxget", mode = "755" },
     { source = "README.md", dest = "/usr/share/doc/muxget/README.md", doc = true, mode = "644" },
     { source = "LICENSE", dest = "/usr/share/licenses/muxget/LICENSE", mode = "644" },
 ]
+
+[package.metadata.generate-rpm.recommends]
+aria2 = "*"
+yt-dlp = "*"
 
 [lib]
 path = "src/lib.rs"

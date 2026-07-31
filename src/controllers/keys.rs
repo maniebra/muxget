@@ -98,6 +98,8 @@ pub const QUEUE_MENU: &[MenuItem] = &[
     MenuItem { key: 'P', label: "pause / resume every queue" },
     MenuItem { key: 'j', label: "next queue" },
     MenuItem { key: 'k', label: "previous queue" },
+    MenuItem { key: '>', label: "move this queue right" },
+    MenuItem { key: '<', label: "move this queue left" },
     MenuItem { key: '+', label: "one more slot" },
     MenuItem { key: '-', label: "one less slot" },
 ];
@@ -283,6 +285,9 @@ impl App {
             KeyCode::Char('[') | KeyCode::Left => self.cycle_queue(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
+            // Order is priority, so this is how a row is promoted.
+            KeyCode::Char('J') => self.move_download(1),
+            KeyCode::Char('K') => self.move_download(-1),
             KeyCode::Tab | KeyCode::Char('f') => {
                 let i = Filter::ALL.iter().position(|f| *f == self.filter).unwrap_or(0);
                 self.set_filter(Filter::ALL[(i + 1) % Filter::ALL.len()]);
@@ -323,6 +328,8 @@ impl App {
             ('g', 'P') => self.toggle_all_pause(),
             ('g', 'j') | ('g', 'l') => self.cycle_queue(1),
             ('g', 'k') | ('g', 'h') => self.cycle_queue(-1),
+            ('g', '>') => self.move_queue(1),
+            ('g', '<') => self.move_queue(-1),
             ('g', '+') | ('g', '=') => self.set_max_active(self.queue().max_active + 1),
             ('g', '-') => self.set_max_active(self.queue().max_active - 1),
             _ => {}

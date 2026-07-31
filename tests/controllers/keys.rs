@@ -236,3 +236,22 @@ fn the_mouse_selects_rows_queues_and_filters() {
     app.on_mouse(click(queues.x + 2, queues.y + 2), size);
     assert_eq!(app.current, 0, "clicks are ignored while a dialog is open");
 }
+
+#[test]
+fn rows_and_queues_can_be_reordered_from_the_keyboard() {
+    let mut app = app_with(&[Status::Queued, Status::Queued]);
+    let (first, second) = (app.downloads[0].url.clone(), app.downloads[1].url.clone());
+    // Order is priority, so J promotes the row below.
+    app.selected = 0;
+    app.on_key(KeyCode::Char('J'));
+    assert_eq!(app.downloads[0].url, second);
+    assert_eq!(app.downloads[1].url, first);
+    app.on_key(KeyCode::Char('K'));
+    assert_eq!(app.downloads[0].url, first, "and back");
+
+    app.add_queue("media");
+    assert_eq!(app.current, 1);
+    typed(&mut app, "g<");
+    assert_eq!(app.current, 0, "the queue moved left, and the view followed it");
+    assert_eq!(app.queues[0].name, "media");
+}

@@ -13,6 +13,9 @@ the whole list — pauses included — comes back where you left it.
 ![muxget running three downloads](assets/shot1.png)
 
 
+Full documentation: **[the manual](docs/manual.md)** — every key, every field,
+every config file, and how it all works underneath.
+
 ## Requirements
 
 `aria2c` and `yt-dlp` on your `PATH`, plus `wget` for crawling, and a Rust
@@ -299,6 +302,12 @@ src/
   main.rs
 tests/          mirrors src/
 ```
+
+## Documentation
+
+[docs/manual.md](docs/manual.md) is the complete guide: the screen, the add
+form, queues and schedules, crawling, routing rules, the settings panel, the
+files on disk, what happens under the hood, and troubleshooting.
 
 ## License
 

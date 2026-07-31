@@ -163,16 +163,19 @@ Your download list, queues (names and slot counts), download directory and
 theme are saved to `~/.config/muxget/` as you change them — there is no save
 step. `-d` and `--theme` override the saved values for that run only.
 
-Next launch picks the list back up: finished, failed and cancelled rows return
-as history, and anything that was running, paused or waiting comes back queued
-and **resumes from its partial file** as slots free up. Pause state itself
-always starts clear.
+Next launch picks the list back up where it left off: finished, failed and
+cancelled rows return as history, paused rows and paused queues come back
+paused, and anything that was running or waiting comes back queued and
+**resumes from its partial file** as slots free up. Retries already spent
+against a queue's `retry=` carry over too, so a hopeless download does not get
+a fresh set of attempts every launch. Resuming a row paused in an earlier run
+puts it back in the queue — the process it was stopped with is long gone.
 
 ```
 # ~/.config/muxget/state
 dir = /home/you/Downloads
-queue = default|3||0
-queue = media|7|22:00-06:00 mon-fri retry=3|1
+queue = default|3||0|
+queue = media|7|22:00-06:00 mon-fri retry=3|1|paused
 download = 0|done|100|https://example.com/linux.iso
 download = 1|queued|12.5|https://youtube.com/watch?v=abc
 ```

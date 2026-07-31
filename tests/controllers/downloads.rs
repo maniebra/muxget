@@ -175,10 +175,10 @@ fn restore_rebuilds_last_sessions_list() {
     app.queues[1].paused = true;
 
     app.restore(&[
-        SavedDownload { over: Default::default(), pid: None, queue: 0, status: Status::Queued, percent: 42.0, url: "https://a.com/x.iso".into() },
-        SavedDownload { over: Default::default(), pid: None, queue: 1, status: Status::Done, percent: 0.0, url: "https://b.com/y.iso".into() },
-        SavedDownload { over: Default::default(), pid: None, queue: 9, status: Status::Queued, percent: 0.0, url: "https://c.com/z.iso".into() },
-        SavedDownload { over: Default::default(), pid: None, queue: 0, status: Status::Queued, percent: 0.0, url: "not a url".into() },
+        SavedDownload { over: Default::default(), pid: None, tries: 0, queue: 0, status: Status::Queued, percent: 42.0, url: "https://a.com/x.iso".into() },
+        SavedDownload { over: Default::default(), pid: None, tries: 0, queue: 1, status: Status::Done, percent: 0.0, url: "https://b.com/y.iso".into() },
+        SavedDownload { over: Default::default(), pid: None, tries: 0, queue: 9, status: Status::Queued, percent: 0.0, url: "https://c.com/z.iso".into() },
+        SavedDownload { over: Default::default(), pid: None, tries: 0, queue: 0, status: Status::Queued, percent: 0.0, url: "not a url".into() },
     ]);
 
     assert_eq!(app.downloads.len(), 3, "the unroutable url is dropped");
@@ -286,4 +286,28 @@ fn rules_route_new_downloads_by_url_and_by_size() {
 
 fn queue_id(app: &App, name: &str) -> usize {
     app.queues.iter().find(|q| q.name == name).expect("queue created").id
+}
+
+#[test]
+fn a_pause_and_its_spent_retries_survive_a_restart() {
+    use muxget::models::state::SavedDownload;
+    let mut app = app_with(&[]);
+    app.restore(&[SavedDownload {
+        over: Default::default(),
+        pid: None,
+        tries: 2,
+        queue: 0,
+        status: Status::Paused,
+        percent: 40.0,
+        url: "https://a.com/x.iso".into(),
+    }]);
+    assert_eq!(app.downloads[0].status, Status::Paused, "still paused");
+    assert_eq!(app.downloads[0].tries, 2, "retries already spent are kept");
+
+    // The process it was stopped with is gone, so resuming has to requeue it.
+    app.toggle_pause(0);
+    assert!(
+        matches!(app.downloads[0].status, Status::Queued | Status::Running),
+        "resumed from its partial file, not stuck claiming a dead process"
+    );
 }

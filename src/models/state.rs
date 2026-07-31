@@ -4,8 +4,9 @@ use crate::models::download::{Download, Overrides, Status};
 use crate::models::queue::{self, Queue, DEFAULT};
 use crate::utils::config_dir;
 
-/// What survives a restart: the download directory, the queues, and the list
-/// of downloads. Pause state does not — a restart starts clear.
+/// What survives a restart: the download directory, the queues with their
+/// pause state, and the downloads with theirs and with the retries they have
+/// already spent.
 #[derive(Debug, Default, PartialEq)]
 pub struct State {
     pub dir: Option<PathBuf>,
@@ -27,19 +28,24 @@ pub struct SavedDownload {
     /// The backend process that was running when this was written. Whatever
     /// killed the last session did not kill it, so the next one must.
     pub pid: Option<u32>,
+    /// Retries already spent, so a restart does not hand a hopeless download
+    /// a fresh set of attempts.
+    pub tries: u8,
 }
 
 fn path() -> PathBuf {
     config_dir().join("state")
 }
 
-/// Anything unfinished comes back queued, so it resumes rather than claiming
-/// to be running a process that died with the last session.
+/// A paused row comes back paused — the process it was stopped with is gone,
+/// but the intent behind the pause is not. Anything that was running comes
+/// back queued, so it resumes rather than claiming to own a dead process.
 fn status_from(word: &str) -> Status {
     match word {
         "done" => Status::Done,
         "cancelled" => Status::Cancelled,
         "failed" => Status::Failed("failed in a previous run".into()),
+        "paused" => Status::Paused,
         _ => Status::Queued,
     }
 }
@@ -49,7 +55,8 @@ fn status_word(status: &Status) -> &'static str {
         Status::Done => "done",
         Status::Cancelled => "cancelled",
         Status::Failed(_) => "failed",
-        // Running, Paused and Queued all resume as queued.
+        Status::Paused => "paused",
+        // Running and Queued both resume as queued.
         _ => "queued",
     }
 }
@@ -59,9 +66,9 @@ impl State {
         State::parse(&std::fs::read_to_string(path()).unwrap_or_default())
     }
 
-    /// `dir = <path>`, `queue = <name>|<slots>|<window>|<id>`,
+    /// `dir = <path>`, `queue = <name>|<slots>|<schedule>|<id>|<paused>`,
     /// `download = <queue>|<status>|<percent>|<url>`, optionally followed by
-    /// `over = <dir>|<name>|<rate>|<user>|<backend>` and `pid = <n>`
+    /// `over = <dir>|<name>|<rate>|<user>|<backend>`, `pid = <n>`, `tries = <n>`
     /// above them — own lines, so a url containing `|` stays the last unsplit
     /// field.
     /// A malformed line is skipped rather than losing the whole file.
@@ -82,12 +89,14 @@ impl State {
                     }
                     // Optional: files written before schedules existed.
                     let (slots, rest) = rest.split_once('|').unwrap_or((rest, ""));
-                    let (window, id) = rest.split_once('|').unwrap_or((rest, ""));
+                    let (window, rest) = rest.split_once('|').unwrap_or((rest, ""));
+                    let (id, paused) = rest.split_once('|').unwrap_or((rest, ""));
                     // Older files have no id; there the order was the id.
                     let id = id.trim().parse().unwrap_or(state.queues.len());
                     let mut q = Queue::new(id, name.trim(), slots.trim().parse().unwrap_or(3));
                     // Also reads files that stored a bare `HH:MM-HH:MM`.
                     queue::parse_spec(window.trim(), &mut q);
+                    q.paused = paused.trim() == "paused";
                     state.queues.push(q);
                 }
                 "download" => {
@@ -116,11 +125,17 @@ impl State {
                         url: url.trim().to_string(),
                         over: Overrides::default(),
                         pid: None,
+                        tries: 0,
                     });
                 }
                 "pid" => {
                     if let Some(last) = state.downloads.last_mut() {
                         last.pid = value.trim().parse().ok();
+                    }
+                }
+                "tries" => {
+                    if let Some(last) = state.downloads.last_mut() {
+                        last.tries = value.trim().parse().unwrap_or(0);
                     }
                 }
                 // Attaches to the download above it.
@@ -148,11 +163,12 @@ impl State {
         let mut text = format!("dir = {}\nnerd = {nerd}\n", dir.display());
         for q in queues {
             text.push_str(&format!(
-                "queue = {}|{}|{}|{}\n",
+                "queue = {}|{}|{}|{}|{}\n",
                 q.name,
                 q.max_active,
                 q.window(),
-                q.id
+                q.id,
+                if q.paused { "paused" } else { "" }
             ));
         }
         for d in downloads {
@@ -165,6 +181,9 @@ impl State {
             ));
             if let Some(pid) = d.pid {
                 text.push_str(&format!("pid = {pid}\n"));
+            }
+            if d.tries > 0 {
+                text.push_str(&format!("tries = {}\n", d.tries));
             }
             if !d.over.is_empty() {
                 text.push_str(&format!(

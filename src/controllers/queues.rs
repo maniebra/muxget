@@ -109,12 +109,19 @@ impl App {
         queue.paused = paused;
         let id = queue.id;
 
-        for d in self.downloads.iter_mut().filter(|d| d.queue == id) {
-            match (paused, &d.status) {
-                (true, Status::Running) => d.pause(),
+        let rows: Vec<usize> = self
+            .downloads
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| d.queue == id)
+            .map(|(at, _)| at)
+            .collect();
+        for at in rows {
+            match (paused, &self.downloads[at].status) {
+                (true, Status::Running) => self.downloads[at].pause(),
                 // Resuming the queue resumes every paused row in it, including
                 // ones paused by hand — one key, one predictable state.
-                (false, Status::Paused) => d.resume(),
+                (false, Status::Paused) => self.resume_row(at),
                 _ => {}
             }
         }

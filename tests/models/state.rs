@@ -28,11 +28,17 @@ fn missing_or_broken_lines_fall_back_instead_of_failing() {
 }
 
 #[test]
-fn pause_state_is_not_persisted() {
+fn a_paused_queue_comes_back_paused() {
     let mut q = Queue::new(0, "default", 3);
     q.paused = true;
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q.clone()], &[], false));
+    assert!(back.queues[0].paused, "the pause outlives the run that made it");
+
+    q.paused = false;
     let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[], false));
-    assert!(!back.queues[0].paused, "a restart starts unpaused");
+    assert!(!back.queues[0].paused);
+    // Files written before the pause was stored still load.
+    assert!(!State::parse("queue = default|3||0\n").queues[0].paused);
 }
 
 fn row(queue: usize, status: Status, url: &str) -> Download {
@@ -68,7 +74,7 @@ fn downloads_round_trip_and_unfinished_ones_come_back_queued() {
 
     assert_eq!(back.downloads.len(), 5);
     assert_eq!(back.downloads[0].status, Status::Queued, "running resumes");
-    assert_eq!(back.downloads[1].status, Status::Queued, "paused resumes");
+    assert_eq!(back.downloads[1].status, Status::Paused, "a pause is kept");
     assert_eq!(back.downloads[1].queue, 1, "queue membership is kept");
     assert_eq!(back.downloads[2].status, Status::Done);
     assert!(matches!(back.downloads[3].status, Status::Failed(_)));

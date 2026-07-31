@@ -206,7 +206,7 @@ impl App {
                 },
                 path: None,
                 pid: None,
-                tries: 0,
+                tries: s.tries,
             });
         }
     }
@@ -261,10 +261,24 @@ impl App {
             // resuming can put a queue one over its limit until
             // something finishes; give resume its own wait state if that bites.
             Status::Paused => {
-                d.resume();
+                self.resume_row(at);
                 self.message = format!("resumed {}", self.downloads[at].url);
             }
             _ => {}
+        }
+    }
+
+    /// Resume a paused row. One paused across a restart has no process left to
+    /// continue, so it goes back in the queue and starts from its partial file
+    /// as soon as its queue has a slot.
+    pub(crate) fn resume_row(&mut self, at: usize) {
+        let Some(d) = self.downloads.get_mut(at) else { return };
+        match d.pid {
+            Some(_) => d.resume(),
+            None => {
+                d.status = Status::Queued;
+                self.pump();
+            }
         }
     }
 

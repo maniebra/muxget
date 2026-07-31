@@ -20,7 +20,7 @@ fn app_with(statuses: &[Status]) -> App {
             progress: Default::default(),
             over: Default::default(),
         path: None,
-        child: None,
+        pid: None,
         })
         .collect();
     app
@@ -36,7 +36,7 @@ fn running_row(id: usize) -> Download {
         progress: Default::default(),
         over: Default::default(),
         path: None,
-        child: None,
+        pid: None,
     }
 }
 
@@ -173,10 +173,10 @@ fn restore_rebuilds_last_sessions_list() {
     app.queues[1].paused = true;
 
     app.restore(&[
-        SavedDownload { over: Default::default(), queue: 0, status: Status::Queued, percent: 42.0, url: "https://a.com/x.iso".into() },
-        SavedDownload { over: Default::default(), queue: 1, status: Status::Done, percent: 0.0, url: "https://b.com/y.iso".into() },
-        SavedDownload { over: Default::default(), queue: 9, status: Status::Queued, percent: 0.0, url: "https://c.com/z.iso".into() },
-        SavedDownload { over: Default::default(), queue: 0, status: Status::Queued, percent: 0.0, url: "not a url".into() },
+        SavedDownload { over: Default::default(), pid: None, queue: 0, status: Status::Queued, percent: 42.0, url: "https://a.com/x.iso".into() },
+        SavedDownload { over: Default::default(), pid: None, queue: 1, status: Status::Done, percent: 0.0, url: "https://b.com/y.iso".into() },
+        SavedDownload { over: Default::default(), pid: None, queue: 9, status: Status::Queued, percent: 0.0, url: "https://c.com/z.iso".into() },
+        SavedDownload { over: Default::default(), pid: None, queue: 0, status: Status::Queued, percent: 0.0, url: "not a url".into() },
     ]);
 
     assert_eq!(app.downloads.len(), 3, "the unroutable url is dropped");
@@ -186,7 +186,7 @@ fn restore_rebuilds_last_sessions_list() {
 
     let ids: Vec<usize> = app.downloads.iter().map(|d| d.id).collect();
     assert_eq!(ids, [0, 1, 2], "ids are reassigned, not reused from the file");
-    assert!(app.downloads.iter().all(|d| d.child.is_none()));
+    assert!(app.downloads.iter().all(|d| d.pid.is_none()));
     assert_eq!(app.downloads[0].progress.percent, 42.0, "progress survives a restart");
     assert_eq!(app.downloads[1].progress.percent, 100.0, "a done row is full");
 }

@@ -1,7 +1,6 @@
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, Mutex};
 
 use crate::models::download::{Overrides, Progress, Status, Update};
 use crate::utils::parse::{destination, for_each_line};
@@ -21,6 +20,11 @@ pub trait Backend: Send + Sync {
     /// One line of tool output -> progress, or None if the line says nothing.
     fn parse(&self, line: &str) -> Option<Progress>;
 
+    /// What a non-zero exit code means, for tools that document theirs.
+    fn reason(&self, code: i32) -> String {
+        format!("exit {code}")
+    }
+
     /// Flag this tool reads a config file with, and that file's contents for
     /// a login. Credentials go through a file so `ps` cannot show them.
     fn config_flag(&self) -> &'static str;
@@ -35,7 +39,7 @@ pub fn run(
     over: &Overrides,
     id: usize,
     tx: Sender<Update>,
-) -> std::io::Result<Arc<Mutex<Child>>> {
+) -> std::io::Result<u32> {
     let mut cmd = backend.command(url, dir, over);
     if !over.user.is_empty() || !over.pass.is_empty() {
         match write_creds(id, &backend.credentials(&over.user, &over.pass)) {
@@ -54,8 +58,7 @@ pub fn run(
         .stdin(Stdio::null())
         .spawn()?;
     let stdout = child.stdout.take().expect("stdout piped above");
-    let child = Arc::new(Mutex::new(child));
-    let waiter = Arc::clone(&child);
+    let pid = child.id();
 
     std::thread::spawn(move || {
         for_each_line(stdout, |line| {
@@ -65,15 +68,17 @@ pub fn run(
                 let _ = tx.send(Update::Located(id, path));
             }
         });
-        // ponytail: lock is only contended by cancel, which happens before EOF.
-        let status = match waiter.lock().unwrap().wait() {
+        let status = match child.wait() {
             Ok(s) if s.success() => Status::Done,
-            Ok(s) => Status::Failed(format!("exit {}", s.code().unwrap_or(-1))),
+            Ok(s) => Status::Failed(match s.code() {
+                Some(code) => backend.reason(code),
+                None => "killed".to_string(),
+            }),
             Err(e) => Status::Failed(e.to_string()),
         };
         clear_creds(id);
         let _ = tx.send(Update::Finished(id, status));
     });
 
-    Ok(child)
+    Ok(pid)
 }

@@ -136,7 +136,9 @@ pub fn destination(line: &str) -> Option<String> {
     }
     // aria2c's result table: `gid|OK  |speed|path`.
     if line.contains("|OK") && line.matches('|').count() >= 3 {
-        return Some(line.rsplit('|').next()?.trim().to_string());
+        let path = line.rsplit('|').next()?.trim();
+        // `[MEMORY][METADATA]name` is a magnet's metadata, not a file on disk.
+        return (!path.starts_with('[')).then(|| path.to_string());
     }
     None
 }

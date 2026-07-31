@@ -24,6 +24,9 @@ pub struct SavedDownload {
     pub percent: f32,
     pub url: String,
     pub over: Overrides,
+    /// The backend process that was running when this was written. Whatever
+    /// killed the last session did not kill it, so the next one must.
+    pub pid: Option<u32>,
 }
 
 fn path() -> PathBuf {
@@ -58,8 +61,9 @@ impl State {
 
     /// `dir = <path>`, `queue = <name>|<slots>|<window>|<id>`,
     /// `download = <queue>|<status>|<percent>|<url>`, optionally followed by
-    /// `over = <dir>|<name>|<rate>|<user>` for the download above it — its
-    /// own line, so a url containing `|` stays the last unsplit field.
+    /// `over = <dir>|<name>|<rate>|<user>` and `pid = <n>` for the download
+    /// above them — own lines, so a url containing `|` stays the last unsplit
+    /// field.
     /// A malformed line is skipped rather than losing the whole file.
     pub fn parse(text: &str) -> State {
         let mut state = State::default();
@@ -110,7 +114,13 @@ impl State {
                         percent: percent.clamp(0.0, 100.0),
                         url: url.trim().to_string(),
                         over: Overrides::default(),
+                        pid: None,
                     });
+                }
+                "pid" => {
+                    if let Some(last) = state.downloads.last_mut() {
+                        last.pid = value.trim().parse().ok();
+                    }
                 }
                 // Attaches to the download above it.
                 "over" => {
@@ -150,6 +160,9 @@ impl State {
                 d.progress.percent,
                 d.url
             ));
+            if let Some(pid) = d.pid {
+                text.push_str(&format!("pid = {pid}\n"));
+            }
             if !d.over.is_empty() {
                 text.push_str(&format!(
                     "over = {}|{}|{}|{}\n",

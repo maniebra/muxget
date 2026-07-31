@@ -20,7 +20,7 @@ fn app_with(statuses: &[Status]) -> App {
             progress: Default::default(),
             over: Default::default(),
         path: None,
-        child: None,
+        pid: None,
         })
         .collect();
     app
@@ -36,7 +36,7 @@ fn running_row(id: usize) -> Download {
         progress: Default::default(),
         over: Default::default(),
         path: None,
-        child: None,
+        pid: None,
     }
 }
 

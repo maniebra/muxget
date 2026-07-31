@@ -21,7 +21,7 @@ fn app_with(statuses: &[Status]) -> App {
             progress: Default::default(),
             over: Default::default(),
         path: None,
-        child: None,
+        pid: None,
         })
         .collect();
     app

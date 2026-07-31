@@ -11,7 +11,7 @@ fn row(url: &str) -> Download {
         status: Status::Queued,
         progress: Default::default(),
         path: None,
-        child: None,
+        pid: None,
     }
 }
 

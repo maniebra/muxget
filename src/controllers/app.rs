@@ -52,6 +52,14 @@ impl App {
         // Nothing is running yet, so any leftover credentials file is stale.
         crate::utils::clear_all_creds();
         let state = State::load();
+        // A backend that outlived the last session would download behind this
+        // one's back, into the same files, reporting to nobody.
+        for d in &state.downloads {
+            if let Some(pid) = d.pid {
+                let name = crate::models::pick(&d.url).map_or("", |b| b.name());
+                crate::utils::reap(pid, name);
+            }
+        }
         let mut app = App::with_queues(dir, state.queues_or_default());
         app.nerd = state.nerd;
         app.restore(&state.downloads);
@@ -97,15 +105,14 @@ impl App {
             if !event::poll(Duration::from_millis(200))? {
                 continue;
             }
-            let Event::Key(key) = event::read()? else {
-                continue;
-            };
-            if key.kind != KeyEventKind::Press {
-                continue;
-            }
-
-            if self.on_key(key.code) {
-                break;
+            match event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    if self.on_key(key.code) {
+                        break;
+                    }
+                }
+                Event::Mouse(mouse) => self.on_mouse(mouse, terminal.size()?),
+                _ => {}
             }
         }
 
@@ -137,7 +144,7 @@ impl App {
                 Update::Notice(text) => self.message = text,
                 Update::Finished(id, s) => {
                     if let Some(d) = self.find(id) {
-                        d.child = None;
+                        d.pid = None;
                         if d.status == Status::Running {
                             d.status = s;
                         }

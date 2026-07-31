@@ -21,7 +21,7 @@ fn app_with(statuses: &[Status]) -> App {
             progress: Default::default(),
             over: Default::default(),
         path: None,
-        child: None,
+        pid: None,
         })
         .collect();
     app
@@ -187,4 +187,51 @@ fn a_pattern_and_range_add_one_download_per_number() {
         ]
     );
     assert_eq!(app.downloads[2].over.name, "local3.iso");
+}
+
+#[test]
+fn the_mouse_selects_rows_queues_and_filters() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    use muxget::controllers::downloads::Filter;
+    use muxget::views::ui::layout;
+    use ratatui::layout::{Rect, Size};
+
+    // Wide and tall enough for the sidebar and the graph to be drawn.
+    let size = Size::new(120, 40);
+    let panes = layout(Rect::new(0, 0, size.width, size.height));
+    let click = |x: u16, y: u16| MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: x,
+        row: y,
+        modifiers: crossterm::event::KeyModifiers::NONE,
+    };
+
+    let mut app = app_with(&[Status::Queued, Status::Queued, Status::Queued]);
+    app.add_queue("media");
+    app.current = 0;
+
+    // Third row of the list: one border, one header, then the rows.
+    let list = panes.list;
+    app.on_mouse(click(list.x + 4, list.y + 4), size);
+    assert_eq!(app.selected, 2);
+
+    // The header row selects nothing and must not panic.
+    app.on_mouse(click(list.x + 4, list.y + 1), size);
+    assert_eq!(app.selected, 2);
+
+    // Second queue in the sidebar.
+    let queues = panes.queues.expect("sidebar drawn at this width");
+    app.on_mouse(click(queues.x + 2, queues.y + 2), size);
+    assert_eq!(app.current, 1);
+
+    // Second filter in the sidebar.
+    let filters = panes.filters.expect("sidebar drawn at this width");
+    app.on_mouse(click(filters.x + 2, filters.y + 2), size);
+    assert_eq!(app.filter, Filter::ALL[1]);
+
+    // A dialog owns the keyboard and the mouse with it.
+    app.current = 0;
+    app.on_key(KeyCode::Char('a'));
+    app.on_mouse(click(queues.x + 2, queues.y + 2), size);
+    assert_eq!(app.current, 0, "clicks are ignored while a dialog is open");
 }

@@ -114,3 +114,17 @@ pub fn clear_creds(id: usize) {
 pub fn clear_all_creds() {
     let _ = std::fs::remove_dir_all(creds_dir());
 }
+
+/// Kill a backend process left over from an earlier run. The name check keeps
+/// a recycled pid from taking some unrelated process down with it; `ps` rather
+/// than `/proc` so this also holds on macOS.
+pub fn reap(pid: u32, name: &str) -> bool {
+    let out = std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "args="])
+        .output();
+    let Ok(out) = out else { return false };
+    if !String::from_utf8_lossy(&out.stdout).contains(name) {
+        return false;
+    }
+    crate::models::download::signal(pid, "-KILL")
+}

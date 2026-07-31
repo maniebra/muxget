@@ -79,7 +79,7 @@ impl App {
             status: Status::Queued,
             progress: Default::default(),
             path: None,
-            child: None,
+            pid: None,
         });
         self.message = format!("queued {url}");
         self.save_state();
@@ -145,7 +145,7 @@ impl App {
                     ..Default::default()
                 },
                 path: None,
-                child: None,
+                pid: None,
             });
         }
     }
@@ -173,9 +173,9 @@ impl App {
         let Some(backend) = pick(&url) else { return };
         let name = backend.name();
         match backend::run(backend, &url, &self.dir, &over, id, self.tx.clone()) {
-            Ok(child) => {
+            Ok(pid) => {
                 let d = &mut self.downloads[at];
-                d.child = Some(child);
+                d.pid = Some(pid);
                 d.status = Status::Running;
                 self.message = format!("started {url}");
             }
@@ -197,7 +197,7 @@ impl App {
                 // The freed slot goes to whatever is waiting.
                 self.pump();
             }
-            // ponytail: resuming can put a queue one over its limit until
+            // resuming can put a queue one over its limit until
             // something finishes; give resume its own wait state if that bites.
             Status::Paused => {
                 d.resume();

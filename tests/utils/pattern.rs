@@ -55,3 +55,26 @@ fn a_credentials_file_is_owner_only_and_removable() {
     clear_creds(4242);
     assert!(!path.exists());
 }
+
+#[test]
+fn a_leftover_backend_process_is_reaped_by_name() {
+    use muxget::utils::reap;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("sleep")
+        .arg("60")
+        .stdout(Stdio::null())
+        .spawn()
+        .expect("spawned");
+    let pid = child.id();
+
+    // A name that does not match leaves the process alone.
+    assert!(!reap(pid, "aria2c"));
+    assert!(child.try_wait().expect("alive").is_none());
+
+    assert!(reap(pid, "sleep"));
+    assert_eq!(child.wait().expect("reaped").code(), None, "killed by signal");
+
+    // A pid that is gone is simply not there any more.
+    assert!(!reap(pid, "sleep"));
+}

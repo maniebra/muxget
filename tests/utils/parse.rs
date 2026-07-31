@@ -54,6 +54,11 @@ fn destination_lines_from_both_backends() {
         destination("a1b2c3|OK  |   1.2MiB/s|/tmp/dl/arch.iso").as_deref(),
         Some("/tmp/dl/arch.iso")
     );
+    // A magnet's metadata is held in memory, not written as a file.
+    assert_eq!(
+        destination("b85daa|OK  |       0B/s|[MEMORY][METADATA]Family.Guy.S23"),
+        None
+    );
     // The result table's header is not a finished row.
     assert_eq!(destination("gid   |stat|avg speed  |path/URI"), None);
     assert_eq!(destination("[download]  42.0% of 1.0GiB at 3MiB/s"), None);

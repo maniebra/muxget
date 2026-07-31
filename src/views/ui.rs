@@ -18,13 +18,19 @@ const SIDEBAR_MIN: u16 = 90;
 const DETAILS_MIN: u16 = 64;
 const SPARK_MIN_HEIGHT: u16 = 20;
 
-pub fn draw(f: &mut Frame, app: &App) {
-    let t = &app.theme;
-    let area = f.area();
+/// Where each panel sits. The mouse handler needs the same answer the drawing
+/// code uses, so both go through `layout`.
+pub struct Panes {
+    pub queues: Option<Rect>,
+    pub filters: Option<Rect>,
+    pub list: Rect,
+    pub spark: Option<Rect>,
+    pub details: Option<Rect>,
+    pub header: Rect,
+    pub footer: Rect,
+}
 
-    // Paint the window background first; every panel draws on top of it.
-    f.render_widget(Block::default().style(Style::default().bg(t.bg).fg(t.fg)), area);
-
+pub fn layout(area: Rect) -> Panes {
     let [header, body, footer] = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(5),
@@ -39,31 +45,52 @@ pub fn draw(f: &mut Frame, app: &App) {
         (false, false) => vec![Constraint::Min(0)],
     };
     let panes = Layout::horizontal(cols).split(body);
-
     let (sidebar, main, details) = match panes.len() {
         3 => (Some(panes[0]), panes[1], Some(panes[2])),
         2 => (None, panes[0], Some(panes[1])),
         _ => (None, panes[0], None),
     };
-
-    draw_header(f, app, header);
-    if let Some(area) = sidebar {
-        draw_sidebar(f, app, area);
-    }
+    let (queues, filters) = match sidebar {
+        Some(area) => {
+            let [queues, filters] =
+                Layout::vertical([Constraint::Min(5), Constraint::Length(6)]).areas(area);
+            (Some(queues), Some(filters))
+        }
+        None => (None, None),
+    };
 
     // Throughput graph only when there is vertical room to spare.
-    if area.height >= SPARK_MIN_HEIGHT {
-        let [list, spark] = Layout::vertical([Constraint::Min(3), Constraint::Length(7)]).areas(main);
-        draw_table(f, app, list);
-        draw_sparkline(f, app, spark);
+    let (list, spark) = if area.height >= SPARK_MIN_HEIGHT {
+        let [list, spark] =
+            Layout::vertical([Constraint::Min(3), Constraint::Length(7)]).areas(main);
+        (list, Some(spark))
     } else {
-        draw_table(f, app, main);
-    }
+        (main, None)
+    };
 
-    if let Some(area) = details {
+    Panes { queues, filters, list, spark, details, header, footer }
+}
+
+pub fn draw(f: &mut Frame, app: &App) {
+    let t = &app.theme;
+    let area = f.area();
+
+    // Paint the window background first; every panel draws on top of it.
+    f.render_widget(Block::default().style(Style::default().bg(t.bg).fg(t.fg)), area);
+
+    let p = layout(area);
+    draw_header(f, app, p.header);
+    if let (Some(queues), Some(filters)) = (p.queues, p.filters) {
+        draw_sidebar(f, app, queues, filters);
+    }
+    draw_table(f, app, p.list);
+    if let Some(area) = p.spark {
+        draw_sparkline(f, app, area);
+    }
+    if let Some(area) = p.details {
         draw_details(f, app, area);
     }
-    draw_footer(f, app, footer);
+    draw_footer(f, app, p.footer);
     // Last, so popovers sit on top of everything.
     crate::views::dialog::draw(f, app);
     crate::views::options::draw(f, app);
@@ -141,10 +168,8 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
+fn draw_sidebar(f: &mut Frame, app: &App, queues: Rect, filters: Rect) {
     let t = &app.theme;
-    let [queues, filters] =
-        Layout::vertical([Constraint::Min(5), Constraint::Length(6)]).areas(area);
 
     let lines: Vec<Line> = app
         .queues

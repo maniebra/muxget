@@ -9,7 +9,7 @@ pub struct Aria2;
 
 /// Direct files, torrents and magnets go to aria2c; anything else is a page
 /// that yt-dlp knows how to dig through.
-// ponytail: extension heuristic, swap for a per-backend probe if it misfires.
+/// extension heuristic, swap for a per-backend probe if it misfires.
 const FILE_EXTS: &[&str] = &[
     ".zip", ".tar", ".gz", ".xz", ".zst", ".7z", ".rar", ".iso", ".img", ".deb", ".rpm", ".pkg",
     ".exe", ".msi", ".dmg", ".appimage", ".bin", ".pdf", ".epub", ".jpg", ".png", ".mp3", ".flac",
@@ -56,6 +56,25 @@ impl Backend for Aria2 {
 
     fn parse(&self, line: &str) -> Option<Progress> {
         parse::aria2(line)
+    }
+
+    /// aria2 documents its exit codes; `exit 13` on its own tells nobody that
+    /// the download stopped because the file was already there.
+    fn reason(&self, code: i32) -> String {
+        match code {
+            2 => "timed out".into(),
+            3 => "resource not found".into(),
+            5 => "too slow, aria2 gave up".into(),
+            6 => "network problem".into(),
+            7 => "stopped while unfinished".into(),
+            9 => "not enough disk space".into(),
+            11 | 12 => "already downloading this torrent".into(),
+            13 => "the file already exists".into(),
+            15 | 16 => "could not write the file".into(),
+            19 => "could not resolve the host".into(),
+            24 => "authorization failed".into(),
+            code => format!("exit {code}"),
+        }
     }
 
     fn config_flag(&self) -> &'static str {

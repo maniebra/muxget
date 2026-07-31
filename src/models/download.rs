@@ -69,14 +69,17 @@ pub struct Download {
     pub progress: Progress,
     /// Where the file landed, once a backend names it. Not persisted.
     pub path: Option<std::path::PathBuf>,
-    pub child: Option<std::sync::Arc<std::sync::Mutex<std::process::Child>>>,
+    /// The backend process, while it runs. A pid rather than the `Child`:
+    /// waiting on a child holds it, and killing through the same lock is how
+    /// a quit hangs and leaves the download orphaned.
+    pub pid: Option<u32>,
 }
 
 impl Download {
     pub fn kill(&mut self) {
         // A stopped process still dies on SIGKILL, so no need to resume first.
-        if let Some(child) = self.child.take() {
-            let _ = child.lock().unwrap().kill();
+        if let Some(pid) = self.pid.take() {
+            signal(pid, "-KILL");
         }
     }
 
@@ -95,19 +98,22 @@ impl Download {
         }
     }
 
-    /// `kill(1)` rather than a libc dependency for two signals.
     fn signal(&self, sig: &str) -> bool {
-        let Some(child) = &self.child else {
+        match self.pid {
             // No process (a test row, or one that already exited).
-            return true;
-        };
-        let pid = child.lock().unwrap().id();
-        std::process::Command::new("kill")
-            .arg(sig)
-            .arg(pid.to_string())
-            .status()
-            .is_ok_and(|s| s.success())
+            None => true,
+            Some(pid) => signal(pid, sig),
+        }
     }
+}
+
+/// `kill(1)` rather than a libc dependency for three signals.
+pub fn signal(pid: u32, sig: &str) -> bool {
+    std::process::Command::new("kill")
+        .arg(sig)
+        .arg(pid.to_string())
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 /// What a worker thread reports back to the controller.

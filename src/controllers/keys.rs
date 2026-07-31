@@ -1,7 +1,9 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::{Rect, Size};
 
 use crate::controllers::app::App;
 use crate::controllers::downloads::Filter;
+use crate::views::ui;
 use crate::controllers::options::Options;
 use crate::models::download::Overrides;
 use crate::utils;
@@ -329,4 +331,70 @@ impl App {
         }
         None
     }
+}
+
+/// Mouse routing. A dialog or panel owns the keyboard, and the mouse with it,
+/// so clicks are ignored while one is open.
+impl App {
+    pub fn on_mouse(&mut self, ev: MouseEvent, size: Size) {
+        if self.dialog.is_some() || self.options.is_some() || self.pending.is_some() {
+            return;
+        }
+        let area = Rect::new(0, 0, size.width, size.height);
+        let panes = ui::layout(area);
+        let (x, y) = (ev.column, ev.row);
+
+        match ev.kind {
+            MouseEventKind::ScrollDown => self.scroll(&panes, x, y, 1),
+            MouseEventKind::ScrollUp => self.scroll(&panes, x, y, -1),
+            MouseEventKind::Down(MouseButton::Left) => {
+                if let Some(row) = row_at(panes.queues, x, y) {
+                    if row < self.queues.len() {
+                        self.current = row;
+                        self.clamp_selection();
+                    }
+                } else if let Some(row) = row_at(panes.filters, x, y) {
+                    if let Some(filter) = Filter::ALL.get(row) {
+                        self.set_filter(*filter);
+                    }
+                } else if let Some(row) = row_at(Some(panes.list), x, y) {
+                    // Row 0 is the header, which selects nothing.
+                    if let Some(n) = row.checked_sub(1) {
+                        let capacity = panes.list.height.saturating_sub(3) as usize;
+                        self.select_visible(n, capacity);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn scroll(&mut self, panes: &ui::Panes, x: u16, y: u16, delta: isize) {
+        if row_at(panes.queues, x, y).is_some() {
+            self.cycle_queue(delta);
+        } else {
+            self.move_selection(delta);
+        }
+    }
+
+    /// Select the row `n` places down the visible list, counting from the top
+    /// of what is on screen.
+    fn select_visible(&mut self, n: usize, capacity: usize) {
+        let rows = self.visible();
+        let at = rows.iter().position(|i| *i == self.selected).unwrap_or(0);
+        // ratatui gets a fresh TableState each frame, so it scrolls the least
+        // it can: the selection sits at the bottom once the list overflows.
+        let offset = at.saturating_sub(capacity.saturating_sub(1));
+        if let Some(i) = rows.get(offset.saturating_add(n)) {
+            self.selected = *i;
+        }
+    }
+}
+
+/// Which line of a bordered panel the pointer is on, if it is inside one.
+fn row_at(area: Option<Rect>, x: u16, y: u16) -> Option<usize> {
+    let area = area?;
+    let inner = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), area.height.saturating_sub(2));
+    (x >= inner.x && x < inner.right() && y >= inner.y && y < inner.bottom())
+        .then(|| (y - inner.y) as usize)
 }

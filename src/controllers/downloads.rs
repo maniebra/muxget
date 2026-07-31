@@ -1,8 +1,9 @@
 use std::process::Stdio;
 
 use crate::controllers::app::App;
-use crate::models::download::{Download, Status, Update};
-use crate::models::{backend, pick, ytdlp};
+use crate::models::download::{Download, Progress, Status, Update};
+use crate::models::state::SavedDownload;
+use crate::models::{backend, pick, queue, ytdlp};
 use crate::utils::parse::{bytes, for_each_line};
 
 /// Which rows the list shows.
@@ -73,6 +74,7 @@ impl App {
             child: None,
         });
         self.message = format!("queued {url}");
+        self.save_state();
         self.pump();
     }
 
@@ -110,6 +112,32 @@ impl App {
                 n => format!("queued {n} entries from the playlist"),
             }));
         });
+    }
+
+    /// Rebuild last session's list. Ids are reassigned — the saved ones meant
+    /// nothing to the processes that are now gone. Unfinished rows come back
+    /// queued and resume from their partial files.
+    pub fn restore(&mut self, saved: &[SavedDownload]) {
+        let known: Vec<usize> = self.queues.iter().map(|q| q.id).collect();
+        for s in saved {
+            let Some(backend) = pick(&s.url) else { continue };
+            let id = self.next_id;
+            self.next_id += 1;
+            self.downloads.push(Download {
+                id,
+                // A queue that no longer exists would strand the row.
+                queue: if known.contains(&s.queue) { s.queue } else { queue::DEFAULT },
+                url: s.url.clone(),
+                backend: backend.name(),
+                status: s.status.clone(),
+                progress: Progress {
+                    // A finished row is at 100 whatever the last report said.
+                    percent: if s.status == Status::Done { 100.0 } else { s.percent },
+                    ..Default::default()
+                },
+                child: None,
+            });
+        }
     }
 
     /// Fill every queue's free slots. Queues run independently of each other.
@@ -177,6 +205,7 @@ impl App {
                 d.status = Status::Cancelled;
             }
         }
+        self.save_state();
         // Cancelling frees a slot for whatever is waiting.
         self.pump();
     }
@@ -199,6 +228,7 @@ impl App {
         self.downloads[at].kill();
         self.downloads.remove(at);
         self.clamp_selection();
+        self.save_state();
     }
 
     pub fn active_in(&self, queue: usize) -> usize {

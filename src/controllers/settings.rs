@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::controllers::app::App;
+use crate::models::state::State;
 use crate::views::theme::Theme;
 
 /// Preferences: theme and download directory. Backend options live in
@@ -20,7 +21,14 @@ impl App {
             return;
         }
         self.dir = path;
+        self.save_state();
         self.message = format!("saving to {}", self.dir.display());
+    }
+
+    /// Persist the directory and queues. Called by every action that changes
+    /// them, so there is no separate "save settings" step to forget.
+    pub fn save_state(&self) {
+        State::save(&self.dir, &self.queues, &self.downloads);
     }
 }
 

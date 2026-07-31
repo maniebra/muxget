@@ -1,10 +1,13 @@
 use muxget::controllers::app::App;
 use muxget::controllers::downloads::Filter;
 use muxget::models::download::{Download, Status};
-use muxget::models::queue::DEFAULT;
+use muxget::models::queue::{Queue, DEFAULT};
 
 fn app_with(statuses: &[Status]) -> App {
-    let mut app = App::new(".".into());
+    // Explicit queues and a throwaway config dir: no dependence on, and no
+    // damage to, whatever the user has saved.
+    std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir().join("muxget-tests"));
+    let mut app = App::with_queues(".".into(), vec![Queue::new(DEFAULT, "default", 3)]);
     app.downloads = statuses
         .iter()
         .enumerate()
@@ -154,4 +157,32 @@ fn a_paused_download_can_still_be_cancelled_and_counts_as_active() {
 
     app.cancel(0);
     assert_eq!(app.downloads[0].status, Status::Cancelled);
+}
+
+#[test]
+fn restore_rebuilds_last_sessions_list() {
+    use muxget::models::state::SavedDownload;
+
+    let mut app = app_with(&[]);
+    app.queues.push(Queue::new(1, "media", 3));
+    app.queues[0].paused = true; // keep restored rows from spawning
+    app.queues[1].paused = true;
+
+    app.restore(&[
+        SavedDownload { queue: 0, status: Status::Queued, percent: 42.0, url: "https://a.com/x.iso".into() },
+        SavedDownload { queue: 1, status: Status::Done, percent: 0.0, url: "https://b.com/y.iso".into() },
+        SavedDownload { queue: 9, status: Status::Queued, percent: 0.0, url: "https://c.com/z.iso".into() },
+        SavedDownload { queue: 0, status: Status::Queued, percent: 0.0, url: "not a url".into() },
+    ]);
+
+    assert_eq!(app.downloads.len(), 3, "the unroutable url is dropped");
+    assert_eq!(app.downloads[0].status, Status::Queued);
+    assert_eq!(app.downloads[1].queue, 1, "queue membership is kept");
+    assert_eq!(app.downloads[2].queue, DEFAULT, "a vanished queue falls back");
+
+    let ids: Vec<usize> = app.downloads.iter().map(|d| d.id).collect();
+    assert_eq!(ids, [0, 1, 2], "ids are reassigned, not reused from the file");
+    assert!(app.downloads.iter().all(|d| d.child.is_none()));
+    assert_eq!(app.downloads[0].progress.percent, 42.0, "progress survives a restart");
+    assert_eq!(app.downloads[1].progress.percent, 100.0, "a done row is full");
 }

@@ -1,10 +1,13 @@
 use crossterm::event::KeyCode;
 use muxget::controllers::app::App;
 use muxget::models::download::{Download, Status};
-use muxget::models::queue::DEFAULT;
+use muxget::models::queue::{Queue, DEFAULT};
 
 fn app_with(statuses: &[Status]) -> App {
-    let mut app = App::new(".".into());
+    // Explicit queues and a throwaway config dir: no dependence on, and no
+    // damage to, whatever the user has saved.
+    std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir().join("muxget-tests"));
+    let mut app = App::with_queues(".".into(), vec![Queue::new(DEFAULT, "default", 3)]);
     app.downloads = statuses
         .iter()
         .enumerate()

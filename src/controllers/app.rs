@@ -9,7 +9,8 @@ use crate::controllers::downloads::Filter;
 use crate::controllers::keys::Dialog;
 use crate::controllers::options::Options;
 use crate::models::download::{Download, Status, Update};
-use crate::models::queue::{self, Queue};
+use crate::models::queue::Queue;
+use crate::models::state::State;
 use crate::views;
 use crate::views::theme::Theme;
 
@@ -41,8 +42,20 @@ pub struct App {
 }
 
 impl App {
+    /// `dir` is the effective download directory: the `-d` flag if given,
+    /// else the saved one, else the working directory (resolved in `main`).
     pub fn new(dir: PathBuf) -> Self {
+        let state = State::load();
+        let mut app = App::with_queues(dir, state.queues_or_default());
+        app.restore(&state.downloads);
+        app
+    }
+
+    /// Explicit queues instead of the saved ones — used by tests, which must
+    /// not depend on whatever the last run happened to persist.
+    pub fn with_queues(dir: PathBuf, queues: Vec<Queue>) -> Self {
         let (tx, rx) = channel();
+        let next_queue_id = queues.len();
         App {
             dir,
             downloads: Vec::new(),
@@ -52,10 +65,10 @@ impl App {
             pending: None,
             message: String::new(),
             filter: Filter::All,
-            queues: vec![Queue::new(queue::DEFAULT, "default", 3)],
+            queues,
             current: 0,
             next_id: 0,
-            next_queue_id: 1,
+            next_queue_id,
             theme: Theme::saved().unwrap_or_default(),
             themes: Theme::all(),
             history: Vec::new(),
@@ -116,6 +129,7 @@ impl App {
         }
         // A finished download frees a slot for the next queued one.
         self.pump();
+        self.save_state();
     }
 
     /// By stable id, never by index — rows move as the list is edited.

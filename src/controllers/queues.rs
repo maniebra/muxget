@@ -14,6 +14,7 @@ impl App {
     pub fn set_max_active(&mut self, n: usize) {
         let i = self.current;
         self.queues[i].max_active = n.clamp(1, 16);
+        self.save_state();
         self.message = format!(
             "{}: {} concurrent",
             self.queues[i].name, self.queues[i].max_active
@@ -37,6 +38,7 @@ impl App {
         self.current = self.queues.len() - 1;
         self.clamp_selection();
         self.message = format!("queue {name} created");
+        self.save_state();
     }
 
     pub fn rename_queue(&mut self, at: usize, name: &str) {
@@ -49,6 +51,7 @@ impl App {
             return;
         }
         self.queues[at].name = name.to_string();
+        self.save_state();
     }
 
     /// Remove a queue; its downloads move to the default queue rather than
@@ -67,6 +70,7 @@ impl App {
         self.current = self.current.min(self.queues.len() - 1);
         self.clamp_selection();
         self.message = format!("queue {name} deleted, downloads moved to default");
+        self.save_state();
         self.pump();
     }
 

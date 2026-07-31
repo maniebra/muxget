@@ -99,6 +99,26 @@ hand-editing those files works alongside the UI:
 --max-download-limit=2M
 ```
 
+## What persists
+
+Your download list, queues (names and slot counts), download directory and
+theme are saved to `~/.config/muxget/` as you change them — there is no save
+step. `-d` and `--theme` override the saved values for that run only.
+
+Next launch picks the list back up: finished, failed and cancelled rows return
+as history, and anything that was running, paused or waiting comes back queued
+and **resumes from its partial file** as slots free up. Pause state itself
+always starts clear.
+
+```
+# ~/.config/muxget/state
+dir = /home/you/Downloads
+queue = default|3
+queue = media|7
+download = 0|done|https://example.com/linux.iso
+download = 1|queued|https://youtube.com/watch?v=abc
+```
+
 ## Themes
 
 Six built in — tokyonight (default), catppuccin, monokai, gruvbox, nord,

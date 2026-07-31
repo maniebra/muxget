@@ -1,6 +1,6 @@
 # muxget
 
-A terminal download manager that drives `aria2c` and `yt-dlp` for you.
+A terminal download manager that drives `aria2c`, `yt-dlp` and `wget` for you.
 
 Paste a url — muxget picks the right backend, queues it, and shows live
 progress. Direct files, torrents and magnets go to aria2c; everything else goes
@@ -22,7 +22,8 @@ to yt-dlp, and playlists expand into one row per video.
 
 ## Requirements
 
-`aria2c` and `yt-dlp` on your `PATH`, plus a Rust toolchain to build.
+`aria2c` and `yt-dlp` on your `PATH`, plus `wget` for crawling, and a Rust
+toolchain to build.
 
 ## Install
 
@@ -44,6 +45,7 @@ muxget --theme nord                     # theme for this run
 | key | action |
 |---|---|
 | `a` | add a url |
+| `c` | crawl a page for links |
 | `e` | edit the selected url (restarts it) |
 | `d` | delete the selected download |
 | `p` or `Space` | pause / resume the selected download |
@@ -58,6 +60,40 @@ muxget --theme nord                     # theme for this run
 
 Queue and item commands are two-key sequences; press the prefix and a menu
 shows the rest. Settings are one panel, opened with `s`.
+
+## Crawling a page
+
+`c` opens a form: the page, how many links deep to follow, and what to keep.
+
+| field | means |
+|---|---|
+| depth | how many links deep to follow, `1` by default |
+| extensions | `pdf,zip,mp3` — every type when empty |
+| include / exclude | url patterns, comma separated; `*` is a wildcard, anything else matches as a substring, and excludes win |
+| size min-max | `1M-500M`; a file the server gives no size for is kept |
+| options | `any-domain` to follow links off the host, `flat` to skip the directory structure, `offline` to mirror instead of listing |
+
+Without `offline` the crawl walks the site without downloading anything and
+comes back with the list it found — one entry per url, sizes included. `space`
+picks a link, `a` picks all of them, `Enter` queues what is picked. Each file
+lands under the path its url maps to, so `https://x.com/docs/a/b.pdf` becomes
+`x.com/docs/a/b.pdf` in the download directory. A query string is folded into
+the file name instead of making an unopenable one, and a name already taken is
+renamed rather than overwritten. `flat` drops the directories.
+
+With `offline` the whole site is fetched as a single row: pages plus the
+stylesheets, scripts, images and fonts they need, with links rewritten to
+point at the local copies. Resources the server does not have are reported as
+they are found, and the copy is still finished.
+
+Re-running an `offline` crawl over the same directory downloads only what
+changed — everything else is compared by timestamp and left alone, and the
+count of skipped files is reported. Point a queue's `sync=` schedule at it and
+the local copy keeps itself current. wget's own timestamps on disk are the
+crawl state; nothing else has to be remembered.
+
+Crawl-wide wget settings — user agent, rate limit, `robots.txt`, extra headers
+— live in the backends tab of `s`, next to the aria2c and yt-dlp ones.
 
 | sequence | action |
 |---|---|

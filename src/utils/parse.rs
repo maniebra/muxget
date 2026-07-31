@@ -61,6 +61,33 @@ pub fn ytdlp(line: &str) -> Option<Progress> {
     })
 }
 
+/// wget's dot progress: `  1500K .......... .......... 22%  1.05M 2s`. A
+/// recursive crawl reports one file at a time, so the percent is the file's.
+pub fn wget(line: &str) -> Option<Progress> {
+    if !line.contains('.') || !line.contains('%') {
+        return None;
+    }
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    let at = tokens.iter().position(|t| t.ends_with('%'))?;
+    let percent: f32 = tokens[at].trim_end_matches('%').parse().ok()?;
+    // Mid-file: `1.05M 2s`. The last line of a file joins them: `15.8M=0s`.
+    let (speed, eta) = match tokens.get(at + 1).and_then(|t| t.split_once('=')) {
+        Some((speed, elapsed)) => (speed, elapsed),
+        None => (*tokens.get(at + 1).unwrap_or(&""), *tokens.get(at + 2).unwrap_or(&"")),
+    };
+    Some(Progress {
+        percent,
+        // wget writes `1.05M`, meaning per second.
+        speed: match speed.is_empty() {
+            true => String::new(),
+            false => format!("{speed}B/s"),
+        },
+        eta: eta.to_string(),
+        done: tokens.first().unwrap_or(&"").to_string(),
+        ..Default::default()
+    })
+}
+
 /// `5.0MiB`, `1.2GiB/s`, `512KB` -> bytes. Both tools use binary prefixes.
 pub fn bytes(s: &str) -> Option<f64> {
     let s = s.trim().trim_end_matches("/s");

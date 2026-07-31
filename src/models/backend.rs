@@ -20,9 +20,22 @@ pub trait Backend: Send + Sync {
     /// One line of tool output -> progress, or None if the line says nothing.
     fn parse(&self, line: &str) -> Option<Progress>;
 
+    /// Something worth telling the user that is not progress — a resource a
+    /// crawl could not fetch, the tally at the end of one.
+    fn notice(&self, _line: &str) -> Option<String> {
+        None
+    }
+
     /// What a non-zero exit code means, for tools that document theirs.
     fn reason(&self, code: i32) -> String {
         format!("exit {code}")
+    }
+
+    /// A non-zero exit this backend does not consider a failure — a crawl
+    /// that could not fetch one of a thousand images still did its job, and
+    /// the ones it missed were reported as they happened.
+    fn tolerates(&self, _code: i32) -> bool {
+        false
     }
 
     /// Flag this tool reads a config file with, and that file's contents for
@@ -66,10 +79,13 @@ pub fn run(
                 let _ = tx.send(Update::Progress(id, p));
             } else if let Some(path) = destination(line) {
                 let _ = tx.send(Update::Located(id, path));
+            } else if let Some(note) = backend.notice(line) {
+                let _ = tx.send(Update::Notice(note));
             }
         });
         let status = match child.wait() {
             Ok(s) if s.success() => Status::Done,
+            Ok(s) if s.code().is_some_and(|c| backend.tolerates(c)) => Status::Done,
             Ok(s) => Status::Failed(match s.code() {
                 Some(code) => backend.reason(code),
                 None => "killed".to_string(),

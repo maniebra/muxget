@@ -192,6 +192,8 @@ mod settings {
         p.on_key(KeyCode::Char('b'));
         assert_eq!(p.options.backend, "yt-dlp");
         p.on_key(KeyCode::Char('b'));
+        assert_eq!(p.options.backend, "wget");
+        p.on_key(KeyCode::Char('b'));
         assert_eq!(p.options.backend, "aria2c");
 
         // Toggling reaches the form under the cursor.

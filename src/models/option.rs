@@ -50,9 +50,23 @@ pub const YTDLP: &[OptSpec] = &[
     OptSpec { flag: "--no-playlist", label: "single video, not playlist", kind: Flag, hint: "" },
 ];
 
+/// Crawl-wide wget settings; a crawl's own recursion flags come from its form.
+pub const WGET: &[OptSpec] = &[
+    OptSpec { flag: "--limit-rate", label: "speed limit", kind: Value, hint: "e.g. 2M" },
+    OptSpec { flag: "--wait", label: "wait between requests (s)", kind: Value, hint: "seconds" },
+    OptSpec { flag: "--user-agent", label: "user agent", kind: Value, hint: "sent as-is" },
+    OptSpec { flag: "--header", label: "extra header", kind: Value, hint: "Name: value" },
+    OptSpec { flag: "--reject", label: "never fetch", kind: Value, hint: "e.g. *.exe,*.zip" },
+    OptSpec { flag: "--exclude-directories", label: "skip directories", kind: Value, hint: "/cgi-bin,/tmp" },
+    OptSpec { flag: "--continue", label: "resume partial files", kind: Flag, hint: "" },
+    OptSpec { flag: "-e robots=off", label: "ignore robots.txt", kind: Flag, hint: "" },
+    OptSpec { flag: "--no-check-certificate", label: "skip certificate checks", kind: Flag, hint: "" },
+];
+
 pub fn specs(backend: &str) -> &'static [OptSpec] {
     match backend {
         "aria2c" => ARIA2,
+        "wget" => WGET,
         _ => YTDLP,
     }
 }

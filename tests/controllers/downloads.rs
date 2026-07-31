@@ -311,3 +311,27 @@ fn a_pause_and_its_spent_retries_survive_a_restart() {
         "resumed from its partial file, not stuck claiming a dead process"
     );
 }
+
+#[test]
+fn picked_links_are_queued_under_the_paths_their_urls_map_to() {
+    use muxget::models::crawl::{Crawl, Found};
+    let mut app = app_with(&[]);
+    app.dir = "/tmp/dl".into();
+    let crawl = Crawl { url: "https://x.com/docs/".into(), ..Default::default() };
+    let found = [
+        Found { url: "https://x.com/docs/a/manual.pdf".into(), size: Some(10.0) },
+        Found { url: "https://x.com/get.php?id=7".into(), size: None },
+        Found { url: "https://x.com/docs/skipped.pdf".into(), size: None },
+    ];
+
+    app.add_found(&crawl, &found, &[0, 1]);
+    assert_eq!(app.downloads.len(), 2, "only the picked links are queued");
+    assert_eq!(app.downloads[0].over.dir, "/tmp/dl/x.com/docs/a");
+    assert_eq!(app.downloads[0].over.name, "", "the url already names the file");
+    assert_eq!(app.downloads[1].over.name, "get@id=7.php", "a query string cannot be a name");
+
+    // Flat mode puts everything in the download directory instead.
+    app.downloads.clear();
+    app.add_found(&Crawl { flat: true, ..crawl }, &found, &[0]);
+    assert_eq!(app.downloads[0].over.dir, "");
+}

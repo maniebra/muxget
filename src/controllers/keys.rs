@@ -4,7 +4,9 @@ use ratatui::layout::{Rect, Size};
 use crate::controllers::app::App;
 use crate::controllers::downloads::Filter;
 use crate::views::ui;
+use crate::controllers::crawl;
 use crate::controllers::options::{Action, Settings};
+use crate::models::crawl::{Crawl, Found};
 use crate::models::download::Overrides;
 use crate::utils;
 
@@ -36,8 +38,9 @@ impl Form {
             dir: self.fields[2].trim().to_string(),
             name: self.fields[3].trim().to_string(),
             rate: self.fields[4].trim().to_string(),
-            // Only a rule sets this; the form has no field for it.
+            // Only a rule or a crawl sets these; the form has no field.
             backend: String::new(),
+            args: String::new(),
             user: self.fields[5].trim().to_string(),
             // Not trimmed: a password's spaces are part of it.
             pass: self.fields[6].clone(),
@@ -71,6 +74,11 @@ pub enum Dialog {
     QueueSchedule(usize, String),
     /// New download directory being typed.
     SetDir(String),
+    /// A crawl being described.
+    Crawl(Form),
+    /// What a crawl found: the crawl, its links, which are picked, and the
+    /// row the cursor is on.
+    Crawled(Box<Crawl>, Vec<Found>, Vec<usize>, usize),
 }
 
 /// One entry of a which-key style menu: press the prefix, then this key.
@@ -167,39 +175,61 @@ impl App {
                 KeyCode::Esc | KeyCode::Char('n') => {}
                 _ => self.dialog = Some(Dialog::QueueDelete(at)),
             },
-            Dialog::Add(mut form) => match key {
-                KeyCode::Enter => {
-                    let (over, range) = (form.overrides(), form.fields[1].clone());
-                    for (i, url) in form.urls().iter().enumerate() {
-                        // Or every item in the range writes to one file.
-                        let mut over = over.clone();
-                        if let Some((from, _)) = utils::parse_range(&range) {
-                            over.name = utils::fill(&over.name, from + i as i64);
-                        }
-                        self.add_with(url, over);
+            Dialog::Add(mut form) => {
+                if !type_in_form(&mut form, key) {
+                    self.dialog = Some(Dialog::Add(form));
+                    return;
+                }
+                if key != KeyCode::Enter {
+                    return;
+                }
+                let (over, range) = (form.overrides(), form.fields[1].clone());
+                for (i, url) in form.urls().iter().enumerate() {
+                    // Or every item in the range writes to one file.
+                    let mut over = over.clone();
+                    if let Some((from, _)) = utils::parse_range(&range) {
+                        over.name = utils::fill(&over.name, from + i as i64);
                     }
+                    self.add_with(url, over);
                 }
-                KeyCode::Esc => {}
-                KeyCode::Tab | KeyCode::Down => {
-                    form.cursor = (form.cursor + 1) % FORM_LABELS.len();
-                    self.dialog = Some(Dialog::Add(form));
+            }
+            Dialog::Crawl(mut form) => {
+                if !type_in_form(&mut form, key) {
+                    self.dialog = Some(Dialog::Crawl(form));
+                    return;
                 }
-                KeyCode::BackTab | KeyCode::Up => {
-                    form.cursor = (form.cursor + FORM_LABELS.len() - 1) % FORM_LABELS.len();
-                    self.dialog = Some(Dialog::Add(form));
+                if key == KeyCode::Enter {
+                    self.start_crawl(crawl::from_form(&form));
                 }
-                key => {
-                    let at = form.cursor;
-                    match key {
-                        KeyCode::Backspace => {
-                            form.fields[at].pop();
-                        }
-                        KeyCode::Char(c) => form.fields[at].push(c),
-                        _ => {}
+            }
+            Dialog::Crawled(crawl, found, mut picked, mut at) => {
+                let last = found.len().saturating_sub(1);
+                match key {
+                    KeyCode::Enter => {
+                        picked.sort_unstable();
+                        self.add_found(&crawl, &found, &picked);
+                        return;
                     }
-                    self.dialog = Some(Dialog::Add(form));
+                    KeyCode::Esc => return,
+                    KeyCode::Down | KeyCode::Char('j') => at = (at + 1).min(last),
+                    KeyCode::Up | KeyCode::Char('k') => at = at.saturating_sub(1),
+                    // Space picks one row, `a` every row or none.
+                    KeyCode::Char(' ') => match picked.iter().position(|i| *i == at) {
+                        Some(i) => {
+                            picked.remove(i);
+                        }
+                        None => picked.push(at),
+                    },
+                    KeyCode::Char('a') => {
+                        picked = match picked.len() == found.len() {
+                            true => Vec::new(),
+                            false => (0..found.len()).collect(),
+                        }
+                    }
+                    _ => {}
                 }
-            },
+                self.dialog = Some(Dialog::Crawled(crawl, found, picked, at));
+            }
             Dialog::Edit(at, buf) => {
                 if let Some(text) = self.type_into(buf, key, |b| Dialog::Edit(at, b)) {
                     self.edit(at, &text);
@@ -235,6 +265,7 @@ impl App {
             // Settings are one panel, not a menu of them.
             KeyCode::Char('s') => self.settings = Some(Settings::open(0, "aria2c")),
             KeyCode::Char('a') => self.dialog = Some(Dialog::Add(Form::default())),
+            KeyCode::Char('c') => self.dialog = Some(Dialog::Crawl(Form::default())),
             KeyCode::Char('e') => {
                 if let Some(d) = self.downloads.get(self.selected) {
                     self.dialog = Some(Dialog::Edit(self.selected, d.url.clone()));
@@ -388,4 +419,22 @@ fn row_at(area: Option<Rect>, x: u16, y: u16) -> Option<usize> {
     let inner = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), area.height.saturating_sub(2));
     (x >= inner.x && x < inner.right() && y >= inner.y && y < inner.bottom())
         .then(|| (y - inner.y) as usize)
+}
+
+/// One keypress into a multi-field form. Returns true when the form is done
+/// with the key — Enter to submit, Esc to drop it — and false while it is
+/// still being typed into.
+fn type_in_form(form: &mut Form, key: KeyCode) -> bool {
+    let fields = form.fields.len();
+    match key {
+        KeyCode::Enter | KeyCode::Esc => return true,
+        KeyCode::Tab | KeyCode::Down => form.cursor = (form.cursor + 1) % fields,
+        KeyCode::BackTab | KeyCode::Up => form.cursor = (form.cursor + fields - 1) % fields,
+        KeyCode::Backspace => {
+            form.fields[form.cursor].pop();
+        }
+        KeyCode::Char(c) => form.fields[form.cursor].push(c),
+        _ => {}
+    }
+    false
 }

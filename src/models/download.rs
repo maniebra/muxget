@@ -35,6 +35,9 @@ pub struct Overrides {
     pub rate: String,
     /// Backend to use instead of the one the url would pick, from a rule.
     pub backend: String,
+    /// Extra flags for that backend, as typed. A crawl carries its recursion
+    /// and mirror flags here.
+    pub args: String,
     /// The password is never persisted and never reaches a command line.
     pub user: String,
     pub pass: String,
@@ -124,6 +127,8 @@ pub fn signal(pid: u32, sig: &str) -> bool {
 /// What a worker thread reports back to the controller.
 pub enum Update {
     Progress(usize, Progress),
+    /// A crawl finished walking: the crawl it came from and the links it kept.
+    Crawled(crate::models::crawl::Crawl, Vec<crate::models::crawl::Found>),
     /// The output path a backend just named.
     Located(usize, String),
     Finished(usize, Status),

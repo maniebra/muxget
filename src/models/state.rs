@@ -68,7 +68,7 @@ impl State {
 
     /// `dir = <path>`, `queue = <name>|<slots>|<schedule>|<id>|<paused>`,
     /// `download = <queue>|<status>|<percent>|<url>`, optionally followed by
-    /// `over = <dir>|<name>|<rate>|<user>|<backend>`, `pid = <n>`, `tries = <n>`
+    /// `over = <dir>|<name>|<rate>|<user>|<backend>|<args>`, `pid = <n>`, `tries = <n>`
     /// above them — own lines, so a url containing `|` stays the last unsplit
     /// field.
     /// A malformed line is skipped rather than losing the whole file.
@@ -141,7 +141,7 @@ impl State {
                 // Attaches to the download above it.
                 "over" => {
                     let Some(last) = state.downloads.last_mut() else { continue };
-                    let mut parts = value.splitn(5, '|');
+                    let mut parts = value.splitn(6, '|');
                     last.over = Overrides {
                         dir: parts.next().unwrap_or_default().trim().to_string(),
                         name: parts.next().unwrap_or_default().trim().to_string(),
@@ -149,6 +149,7 @@ impl State {
                         user: parts.next().unwrap_or_default().trim().to_string(),
                         // Appended last, so files without it still read right.
                         backend: parts.next().unwrap_or_default().trim().to_string(),
+                        args: parts.next().unwrap_or_default().trim().to_string(),
                         // Never stored.
                         pass: String::new(),
                     };
@@ -187,8 +188,8 @@ impl State {
             }
             if !d.over.is_empty() {
                 text.push_str(&format!(
-                    "over = {}|{}|{}|{}|{}\n",
-                    d.over.dir, d.over.name, d.over.rate, d.over.user, d.over.backend
+                    "over = {}|{}|{}|{}|{}|{}\n",
+                    d.over.dir, d.over.name, d.over.rate, d.over.user, d.over.backend, d.over.args
                 ));
             }
         }

@@ -150,6 +150,7 @@ impl App {
                     }
                 }
                 Update::Discovered(queue, url, over) => self.enqueue(&url, queue, over),
+                Update::Crawled(crawl, found) => self.crawled(crawl, found),
                 Update::Notice(text) => self.message = text,
                 Update::Finished(id, s) => {
                     if let Some(d) = self.find(id) {

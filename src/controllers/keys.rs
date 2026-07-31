@@ -19,6 +19,8 @@ pub enum Dialog {
     QueueRename(usize, String),
     /// Confirming removal of the queue at this index in `queues`.
     QueueDelete(usize),
+    /// Daily active window for the queue at this index, `HH:MM-HH:MM`.
+    QueueSchedule(usize, String),
     /// New download directory being typed.
     SetDir(String),
 }
@@ -36,6 +38,7 @@ pub const QUEUE_MENU: &[MenuItem] = &[
     MenuItem { key: 'r', label: "rename queue" },
     MenuItem { key: 'd', label: "delete queue" },
     MenuItem { key: 'p', label: "pause / resume this queue" },
+    MenuItem { key: 't', label: "schedule (HH:MM-HH:MM)" },
     MenuItem { key: 'P', label: "pause / resume every queue" },
     MenuItem { key: 'j', label: "next queue" },
     MenuItem { key: 'k', label: "previous queue" },
@@ -127,6 +130,11 @@ impl App {
                     self.add_queue(&text);
                 }
             }
+            Dialog::QueueSchedule(at, buf) => {
+                if let Some(text) = self.type_into(buf, key, |b| Dialog::QueueSchedule(at, b)) {
+                    self.set_schedule(at, &text);
+                }
+            }
             Dialog::QueueRename(at, buf) => {
                 if let Some(text) = self.type_into(buf, key, |b| Dialog::QueueRename(at, b)) {
                     self.rename_queue(at, &text);
@@ -182,6 +190,10 @@ impl App {
             }
             ('g', 'd') => self.dialog = Some(Dialog::QueueDelete(self.current)),
             ('g', 'p') => self.toggle_queue_pause(),
+            ('g', 't') => {
+                self.dialog =
+                    Some(Dialog::QueueSchedule(self.current, self.queue().window()))
+            }
             ('g', 'P') => self.toggle_all_pause(),
             ('g', 'j') | ('g', 'l') => self.cycle_queue(1),
             ('g', 'k') | ('g', 'h') => self.cycle_queue(-1),

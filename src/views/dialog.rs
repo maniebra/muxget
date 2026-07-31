@@ -63,6 +63,11 @@ pub fn draw(f: &mut Frame, app: &App) {
             named(t, "name", buf),
             "Enter rename · Esc cancel",
         ),
+        Dialog::QueueSchedule(_, buf) => (
+            "queue schedule",
+            named(t, "window", buf),
+            "Enter save · empty clears · Esc cancel",
+        ),
         Dialog::QueueDelete(at) => (
             "delete queue",
             vec![

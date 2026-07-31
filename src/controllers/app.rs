@@ -35,6 +35,8 @@ pub struct App {
     /// Aggregate bytes/s, newest last, for the sparkline.
     pub history: Vec<u64>,
     pub(crate) ticked: Instant,
+    /// Last time queue schedules were checked against the clock.
+    pub(crate) scheduled: Instant,
     pub(crate) next_id: usize,
     pub(crate) next_queue_id: usize,
     pub(crate) tx: Sender<Update>,
@@ -73,6 +75,7 @@ impl App {
             themes: Theme::all(),
             history: Vec::new(),
             ticked: Instant::now(),
+            scheduled: Instant::now(),
             tx,
             rx,
         }
@@ -143,6 +146,11 @@ impl App {
             return;
         }
         self.ticked = Instant::now();
+        // Windows have minute resolution; no need to ask the clock every frame.
+        if self.scheduled.elapsed() >= Duration::from_secs(15) {
+            self.scheduled = Instant::now();
+            self.apply_schedules();
+        }
         self.history.push(self.speed() as u64);
         if self.history.len() > 240 {
             self.history.remove(0);

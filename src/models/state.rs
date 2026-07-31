@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::models::download::{Download, Status};
-use crate::models::queue::{Queue, DEFAULT};
+use crate::models::queue::{self, Queue, DEFAULT};
 use crate::utils::config_dir;
 
 /// What survives a restart: the download directory, the queues, and the list
@@ -54,7 +54,8 @@ impl State {
         State::parse(&std::fs::read_to_string(path()).unwrap_or_default())
     }
 
-    /// `dir = <path>`, `queue = <name>|<slots>`, `download = <queue>|<status>|<url>`.
+    /// `dir = <path>`, `queue = <name>|<slots>|<window>`,
+    /// `download = <queue>|<status>|<percent>|<url>`.
     /// A malformed line is skipped rather than losing the whole file.
     pub fn parse(text: &str) -> State {
         let mut state = State::default();
@@ -66,17 +67,17 @@ impl State {
             match key.trim() {
                 "dir" if !value.is_empty() => state.dir = Some(PathBuf::from(value)),
                 "queue" => {
-                    let (name, slots) = value.split_once('|').unwrap_or((value, "3"));
+                    let (name, rest) = value.split_once('|').unwrap_or((value, "3"));
                     if name.trim().is_empty() {
                         continue;
                     }
+                    // The window is optional, so files written before it exist.
+                    let (slots, window) = rest.split_once('|').unwrap_or((rest, ""));
                     // Ids are positional: the first queue is always the default.
                     let id = state.queues.len();
-                    state.queues.push(Queue::new(
-                        id,
-                        name.trim(),
-                        slots.trim().parse().unwrap_or(3),
-                    ));
+                    let mut q = Queue::new(id, name.trim(), slots.trim().parse().unwrap_or(3));
+                    q.schedule = queue::parse_window(window);
+                    state.queues.push(q);
                 }
                 "download" => {
                     let Some((queue, rest)) = value.split_once('|') else {
@@ -114,7 +115,7 @@ impl State {
     pub fn render(dir: &Path, queues: &[Queue], downloads: &[Download]) -> String {
         let mut text = format!("dir = {}\n", dir.display());
         for q in queues {
-            text.push_str(&format!("queue = {}|{}\n", q.name, q.max_active));
+            text.push_str(&format!("queue = {}|{}|{}\n", q.name, q.max_active, q.window()));
         }
         for d in downloads {
             text.push_str(&format!(

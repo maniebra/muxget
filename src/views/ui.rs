@@ -158,10 +158,11 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
                     "{} {:<9}{}",
                     if on { "▸" } else { " " },
                     truncate(&q.name, 9),
-                    if q.paused {
-                        "paused".to_string()
-                    } else {
-                        format!("{}/{}", app.active_in(q.id), q.max_active)
+                    match (q.paused, q.schedule) {
+                        // A scheduled queue shows its window; it explains the pause.
+                        (_, Some(_)) => q.window(),
+                        (true, None) => "paused".to_string(),
+                        (false, None) => format!("{}/{}", app.active_in(q.id), q.max_active),
                     }
                 ),
                 style,

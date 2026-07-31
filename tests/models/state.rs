@@ -84,3 +84,16 @@ fn broken_download_lines_are_skipped() {
     let state = State::parse("download = 0\ndownload = 0|done\ndownload = 0|done|\n");
     assert!(state.downloads.is_empty());
 }
+
+#[test]
+fn a_queue_window_round_trips_and_is_optional() {
+    let mut q = muxget::models::queue::Queue::new(0, "night", 3);
+    q.schedule = muxget::models::queue::parse_window("22:00-06:00");
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[]));
+    assert_eq!(back.queues[0].schedule, Some((22 * 60, 6 * 60)));
+
+    // Files written before schedules existed still load.
+    let old = State::parse("queue = default|4\n");
+    assert_eq!(old.queues[0].max_active, 4);
+    assert_eq!(old.queues[0].schedule, None);
+}

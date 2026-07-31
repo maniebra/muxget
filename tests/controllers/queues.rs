@@ -171,3 +171,23 @@ fn a_paused_queue_does_not_block_another_queue() {
     assert_eq!(app.active_in(media), 1);
     assert_eq!(app.downloads[0].status, Status::Queued, "stays parked");
 }
+
+#[test]
+fn a_schedule_pauses_outside_its_window_and_resumes_inside() {
+    let mut app = app_with(&[Status::Queued]);
+    app.set_schedule(0, "22:00-06:00");
+    let q = &app.queues[0];
+    assert_eq!(q.schedule, Some((22 * 60, 6 * 60)));
+    assert!(q.open_at(23 * 60), "inside, past midnight window");
+    assert!(q.open_at(5 * 60), "inside, after midnight");
+    assert!(!q.open_at(12 * 60), "outside");
+
+    app.set_schedule(0, "09:00-17:00");
+    let q = &app.queues[0];
+    assert!(q.open_at(12 * 60) && !q.open_at(20 * 60), "plain window");
+
+    // Junk and empty both clear it rather than pausing the queue forever.
+    app.set_schedule(0, "nonsense");
+    assert_eq!(app.queues[0].schedule, None);
+    assert!(app.queues[0].open_at(0), "no window means always open");
+}

@@ -121,6 +121,40 @@ impl App {
         }
     }
 
+    /// Give the current queue a daily active window, or clear it with an
+    /// empty (or unparseable) value.
+    pub fn set_schedule(&mut self, at: usize, text: &str) {
+        let Some(queue) = self.queues.get_mut(at) else { return };
+        queue.schedule = queue::parse_window(text);
+        self.message = match self.queues[at].schedule {
+            Some(_) => format!("{} runs {}", self.queues[at].name, self.queues[at].window()),
+            None if text.trim().is_empty() => format!("{} schedule cleared", self.queues[at].name),
+            None => "schedule must look like 22:00-06:00".into(),
+        };
+        self.save_state();
+        self.apply_schedules();
+    }
+
+    /// Pause queues outside their window and resume them inside it. Manual
+    /// pauses of an unscheduled queue are left alone — only a queue with a
+    /// window is driven by the clock.
+    pub fn apply_schedules(&mut self) {
+        if !self.queues.iter().any(|q| q.schedule.is_some()) {
+            return;
+        }
+        let Some(now) = queue::now_minutes() else { return };
+        for at in 0..self.queues.len() {
+            let q = &self.queues[at];
+            if q.schedule.is_none() {
+                continue;
+            }
+            let paused = !q.open_at(now);
+            if paused != q.paused {
+                self.set_queue_paused(at, paused);
+            }
+        }
+    }
+
     /// Switch the viewed queue by `delta` places.
     pub fn cycle_queue(&mut self, delta: isize) {
         let n = self.queues.len() as isize;

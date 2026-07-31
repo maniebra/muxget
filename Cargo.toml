@@ -2,6 +2,9 @@
 name = "muxget"
 version = "0.1.0"
 edition = "2021"
+description = "Terminal download manager driving aria2c and yt-dlp"
+license = "MIT"
+readme = "README.md"
 
 [dependencies]
 ratatui = "0.29"

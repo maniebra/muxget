@@ -97,10 +97,17 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(t.fg).bg(t.selected).add_modifier(Modifier::BOLD),
         ),
         sep.clone(),
-        chip(
-            format!("{}/{} running", app.active_in(app.queue().id), app.queue().max_active),
-            t.accent,
-        ),
+        if app.queue().paused {
+            Span::styled(
+                " paused ",
+                Style::default().fg(t.bg).bg(t.err).add_modifier(Modifier::BOLD),
+            )
+        } else {
+            chip(
+                format!("{}/{} running", app.active_in(app.queue().id), app.queue().max_active),
+                t.accent,
+            )
+        },
         sep.clone(),
         chip(format!("{} queued", app.queued_in(app.queue().id)), t.muted),
         sep.clone(),
@@ -148,11 +155,14 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
             };
             Line::styled(
                 format!(
-                    "{} {:<9}{}/{}",
+                    "{} {:<9}{}",
                     if on { "▸" } else { " " },
                     truncate(&q.name, 9),
-                    app.active_in(q.id),
-                    q.max_active
+                    if q.paused {
+                        "paused".to_string()
+                    } else {
+                        format!("{}/{}", app.active_in(q.id), q.max_active)
+                    }
                 ),
                 style,
             )
@@ -219,6 +229,7 @@ fn draw_table(f: &mut Frame, app: &App, area: Rect) {
         let (icon, state, color) = match &d.status {
             Status::Queued => ("·", "queued".into(), t.muted),
             Status::Running => ("▶", d.progress.eta.clone(), t.accent),
+            Status::Paused => ("⏸", "paused".into(), t.err),
             Status::Done => ("✓", "done".into(), t.ok),
             Status::Cancelled => ("■", "cancelled".into(), t.muted),
             Status::Failed(e) => ("✗", e.clone(), t.err),
@@ -296,6 +307,7 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
     let (state, color) = match &d.status {
         Status::Queued => ("queued".to_string(), t.muted),
         Status::Running => ("running".to_string(), t.accent),
+        Status::Paused => ("paused".to_string(), t.err),
         Status::Done => ("done".to_string(), t.ok),
         Status::Cancelled => ("cancelled".to_string(), t.muted),
         Status::Failed(e) => (format!("failed ({e})"), t.err),
@@ -333,7 +345,7 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let keys: &[(&str, &str)] = if area.width >= 100 {
-        &[("a", "add"), ("e", "edit"), ("d", "del"), ("x", "stop"), ("g…", "queue"), ("s…", "settings"), ("[ ]", "switch"), ("Tab", "filter"), ("q", "quit")]
+        &[("a", "add"), ("e", "edit"), ("d", "del"), ("p", "pause"), ("x", "stop"), ("g…", "queue"), ("s…", "settings"), ("[ ]", "switch"), ("Tab", "filter"), ("q", "quit")]
     } else if area.width >= 74 {
         &[("a", "add"), ("d", "del"), ("g…", "queue"), ("s…", "settings"), ("Tab", "filter"), ("q", "quit")]
     } else {

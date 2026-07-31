@@ -117,3 +117,41 @@ fn failed_filter_covers_cancelled() {
     assert!(Filter::Failed.matches(&Status::Cancelled));
     assert!(!Filter::Failed.matches(&Status::Done));
 }
+
+#[test]
+fn pause_and_resume_toggle_without_losing_the_row() {
+    // No queued rows here: a freed slot would immediately start a real spawn.
+    let mut app = app_with(&[Status::Running]);
+
+    app.toggle_pause(0);
+    assert_eq!(app.downloads[0].status, Status::Paused);
+    assert_eq!(app.downloads.len(), 1, "the row stays");
+    assert_eq!(app.active_in(DEFAULT), 0, "a paused download frees its slot");
+
+    app.toggle_pause(0);
+    assert_eq!(app.downloads[0].status, Status::Running);
+}
+
+#[test]
+fn pause_only_applies_to_in_flight_downloads() {
+    let mut app = app_with(&[Status::Done, Status::Queued, Status::Cancelled]);
+    for at in 0..3 {
+        app.toggle_pause(at);
+    }
+    assert_eq!(app.downloads[0].status, Status::Done);
+    assert_eq!(app.downloads[1].status, Status::Queued, "queued is not paused");
+    assert_eq!(app.downloads[2].status, Status::Cancelled);
+}
+
+#[test]
+fn a_paused_download_can_still_be_cancelled_and_counts_as_active() {
+    let mut app = app_with(&[Status::Running]);
+    app.toggle_pause(0);
+    assert_eq!(app.visible(), [0]);
+
+    app.set_filter(Filter::Active);
+    assert_eq!(app.visible(), [0], "paused rows show under the active filter");
+
+    app.cancel(0);
+    assert_eq!(app.downloads[0].status, Status::Cancelled);
+}

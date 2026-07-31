@@ -29,7 +29,9 @@ impl Filter {
     pub fn matches(self, status: &Status) -> bool {
         match self {
             Filter::All => true,
-            Filter::Active => matches!(status, Status::Running | Status::Queued),
+            Filter::Active => {
+                matches!(status, Status::Running | Status::Queued | Status::Paused)
+            }
             Filter::Done => *status == Status::Done,
             Filter::Failed => matches!(status, Status::Failed(_) | Status::Cancelled),
         }
@@ -113,6 +115,10 @@ impl App {
     /// Fill every queue's free slots. Queues run independently of each other.
     pub fn pump(&mut self) {
         for i in 0..self.queues.len() {
+            // A paused queue starts nothing, however many slots are free.
+            if self.queues[i].paused {
+                continue;
+            }
             let (id, max) = (self.queues[i].id, self.queues[i].max_active);
             while self.active_in(id) < max {
                 let Some(at) = self.next_queued(id) else { break };
@@ -143,10 +149,30 @@ impl App {
         }
     }
 
+    /// Pause a running download, or resume a paused one.
+    pub fn toggle_pause(&mut self, at: usize) {
+        let Some(d) = self.downloads.get_mut(at) else { return };
+        match d.status {
+            Status::Running => {
+                d.pause();
+                self.message = format!("paused {}", self.downloads[at].url);
+                // The freed slot goes to whatever is waiting.
+                self.pump();
+            }
+            // ponytail: resuming can put a queue one over its limit until
+            // something finishes; give resume its own wait state if that bites.
+            Status::Paused => {
+                d.resume();
+                self.message = format!("resumed {}", self.downloads[at].url);
+            }
+            _ => {}
+        }
+    }
+
     /// Stop the download but keep the row.
     pub fn cancel(&mut self, at: usize) {
         if let Some(d) = self.downloads.get_mut(at) {
-            if matches!(d.status, Status::Running | Status::Queued) {
+            if matches!(d.status, Status::Running | Status::Queued | Status::Paused) {
                 d.kill();
                 d.status = Status::Cancelled;
             }

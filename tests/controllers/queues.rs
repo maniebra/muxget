@@ -114,3 +114,57 @@ fn slot_count_is_clamped() {
     app.set_max_active(999);
     assert_eq!(app.queue().max_active, 16);
 }
+
+#[test]
+fn pausing_a_queue_freezes_it_and_starts_nothing() {
+    let mut app = app_with(&[Status::Running, Status::Queued]);
+    app.queues[0].max_active = 3;
+
+    app.toggle_queue_pause();
+    assert!(app.queues[0].paused);
+    assert_eq!(app.downloads[0].status, Status::Paused);
+
+    // A free slot must not start the queued row while the queue is paused.
+    app.pump();
+    assert_eq!(app.downloads[1].status, Status::Queued);
+
+    app.toggle_queue_pause();
+    assert!(!app.queues[0].paused);
+    assert_eq!(app.downloads[0].status, Status::Running, "rows resume with it");
+}
+
+#[test]
+fn pause_all_covers_every_queue_and_resume_clears_a_mixed_state() {
+    let mut app = app_with(&[Status::Running]);
+    app.add_queue("media");
+    let media = app.queue().id;
+    app.downloads.push(Download { queue: media, ..running_row(7) });
+
+    app.toggle_all_pause();
+    assert!(app.queues.iter().all(|q| q.paused));
+    assert!(app.downloads.iter().all(|d| d.status == Status::Paused));
+
+    // One queue resumed by hand leaves a mixed state; `P` resolves it to all-on.
+    app.toggle_queue_pause();
+    assert!(app.queues.iter().any(|q| q.paused));
+
+    app.toggle_all_pause();
+    assert!(app.queues.iter().all(|q| !q.paused), "resuming wins over pausing");
+    assert!(app.downloads.iter().all(|d| d.status == Status::Running));
+}
+
+#[test]
+fn a_paused_queue_does_not_block_another_queue() {
+    let mut app = app_with(&[Status::Queued]);
+    app.add_queue("media");
+    let media = app.queue().id;
+    app.downloads.push(Download { queue: media, ..running_row(7) });
+
+    app.current = 0;
+    app.toggle_queue_pause();
+
+    assert!(app.queues[0].paused);
+    assert!(!app.queues[1].paused, "the other queue keeps running");
+    assert_eq!(app.active_in(media), 1);
+    assert_eq!(app.downloads[0].status, Status::Queued, "stays parked");
+}

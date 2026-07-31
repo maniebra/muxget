@@ -5,6 +5,8 @@ pub struct Queue {
     pub id: usize,
     pub name: String,
     pub max_active: usize,
+    /// While set, nothing in this queue starts — `pump` skips it entirely.
+    pub paused: bool,
 }
 
 /// The queue every download lands in unless another is selected. Always exists.
@@ -16,6 +18,7 @@ impl Queue {
             id,
             name: name.trim().to_string(),
             max_active: max_active.clamp(1, 16),
+            paused: false,
         }
     }
 }

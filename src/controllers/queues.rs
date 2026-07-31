@@ -1,4 +1,5 @@
 use crate::controllers::app::App;
+use crate::models::download::Status;
 use crate::models::queue::{self, Queue};
 
 /// Queue CRUD and slot limits.
@@ -67,6 +68,53 @@ impl App {
         self.clamp_selection();
         self.message = format!("queue {name} deleted, downloads moved to default");
         self.pump();
+    }
+
+    /// Pause the current queue, or resume it if already paused.
+    pub fn toggle_queue_pause(&mut self) {
+        let at = self.current;
+        let paused = !self.queues[at].paused;
+        self.set_queue_paused(at, paused);
+        self.message = format!(
+            "queue {} {}",
+            self.queues[at].name,
+            if paused { "paused" } else { "resumed" }
+        );
+    }
+
+    /// Pause every queue, or resume them all if any is paused. Resuming wins
+    /// so a half-paused app reaches a known state in one keypress.
+    pub fn toggle_all_pause(&mut self) {
+        let paused = !self.queues.iter().any(|q| q.paused);
+        for at in 0..self.queues.len() {
+            self.set_queue_paused(at, paused);
+        }
+        self.message = if paused {
+            "all queues paused".into()
+        } else {
+            "all queues resumed".into()
+        };
+    }
+
+    /// A paused queue holds its running downloads frozen and starts no new
+    /// ones; resuming reverses both halves.
+    fn set_queue_paused(&mut self, at: usize, paused: bool) {
+        let Some(queue) = self.queues.get_mut(at) else { return };
+        queue.paused = paused;
+        let id = queue.id;
+
+        for d in self.downloads.iter_mut().filter(|d| d.queue == id) {
+            match (paused, &d.status) {
+                (true, Status::Running) => d.pause(),
+                // Resuming the queue resumes every paused row in it, including
+                // ones paused by hand — one key, one predictable state.
+                (false, Status::Paused) => d.resume(),
+                _ => {}
+            }
+        }
+        if !paused {
+            self.pump();
+        }
     }
 
     /// Switch the viewed queue by `delta` places.

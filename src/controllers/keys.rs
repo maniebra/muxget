@@ -35,6 +35,8 @@ pub const QUEUE_MENU: &[MenuItem] = &[
     MenuItem { key: 'n', label: "new queue" },
     MenuItem { key: 'r', label: "rename queue" },
     MenuItem { key: 'd', label: "delete queue" },
+    MenuItem { key: 'p', label: "pause / resume this queue" },
+    MenuItem { key: 'P', label: "pause / resume every queue" },
     MenuItem { key: 'j', label: "next queue" },
     MenuItem { key: 'k', label: "previous queue" },
     MenuItem { key: '+', label: "one more slot" },
@@ -148,6 +150,8 @@ impl App {
                     self.dialog = Some(Dialog::Delete(self.selected));
                 }
             }
+            KeyCode::Char('p') | KeyCode::Char(' ') => self.toggle_pause(self.selected),
+            KeyCode::Char('P') => self.toggle_all_pause(),
             KeyCode::Char('x') => self.cancel(self.selected),
             KeyCode::Char(']') | KeyCode::Right => self.cycle_queue(1),
             KeyCode::Char('[') | KeyCode::Left => self.cycle_queue(-1),
@@ -177,6 +181,8 @@ impl App {
                 self.dialog = Some(Dialog::QueueRename(self.current, self.queue().name.clone()))
             }
             ('g', 'd') => self.dialog = Some(Dialog::QueueDelete(self.current)),
+            ('g', 'p') => self.toggle_queue_pause(),
+            ('g', 'P') => self.toggle_all_pause(),
             ('g', 'j') | ('g', 'l') => self.cycle_queue(1),
             ('g', 'k') | ('g', 'h') => self.cycle_queue(-1),
             ('g', '+') | ('g', '=') => self.set_max_active(self.queue().max_active + 1),

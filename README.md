@@ -46,6 +46,8 @@ muxget --theme nord                     # theme for this run
 | `a` | add a url |
 | `e` | edit the selected url (restarts it) |
 | `d` | delete the selected download |
+| `p` or `Space` | pause / resume the selected download |
+| `P` | pause / resume every queue |
 | `x` | stop it, keep the row |
 | `j` / `k` | move the selection |
 | `Tab` | cycle filter: all / active / done / failed |
@@ -59,10 +61,20 @@ shows the rest.
 |---|---|
 | `gn` `gr` `gd` | new / rename / delete queue |
 | `gj` `gk` | next / previous queue |
+| `gp` `gP` | pause / resume this queue / every queue |
 | `g+` `g-` | slots for this queue |
 | `st` `sT` | next / previous theme |
 | `sd` | download directory |
 | `sa` `sy` | aria2c / yt-dlp options panel |
+
+Pausing sends `SIGSTOP` to the backend process: connections and the partial
+file stay put, and the freed slot goes to whatever is queued behind it. `p`
+again sends `SIGCONT`. Over a long pause a server may drop the socket anyway —
+both backends retry and resume from where the file left off.
+
+`gp` pauses the whole queue and `P` pauses every queue: running downloads
+freeze and, unlike a single pause, nothing queued behind them starts. `P` on a
+half-paused app resumes everything, so one key always reaches a known state.
 
 ## Queues
 

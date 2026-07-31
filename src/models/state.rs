@@ -9,6 +9,8 @@ use crate::utils::config_dir;
 #[derive(Debug, Default, PartialEq)]
 pub struct State {
     pub dir: Option<PathBuf>,
+    /// Draw status icons with nerd font glyphs instead of plain unicode.
+    pub nerd: bool,
     pub queues: Vec<Queue>,
     pub downloads: Vec<SavedDownload>,
 }
@@ -69,6 +71,7 @@ impl State {
             let value = value.trim();
             match key.trim() {
                 "dir" if !value.is_empty() => state.dir = Some(PathBuf::from(value)),
+                "nerd" => state.nerd = value == "true",
                 "queue" => {
                     let (name, rest) = value.split_once('|').unwrap_or((value, "3"));
                     if name.trim().is_empty() {
@@ -126,8 +129,8 @@ impl State {
         state
     }
 
-    pub fn render(dir: &Path, queues: &[Queue], downloads: &[Download]) -> String {
-        let mut text = format!("dir = {}\n", dir.display());
+    pub fn render(dir: &Path, queues: &[Queue], downloads: &[Download], nerd: bool) -> String {
+        let mut text = format!("dir = {}\nnerd = {nerd}\n", dir.display());
         for q in queues {
             text.push_str(&format!("queue = {}|{}|{}\n", q.name, q.max_active, q.window()));
         }
@@ -151,9 +154,9 @@ impl State {
 
     /// Best effort: a config that cannot be written is not worth interrupting
     /// a download for.
-    pub fn save(dir: &Path, queues: &[Queue], downloads: &[Download]) {
+    pub fn save(dir: &Path, queues: &[Queue], downloads: &[Download], nerd: bool) {
         let _ = std::fs::create_dir_all(config_dir());
-        let _ = std::fs::write(path(), State::render(dir, queues, downloads));
+        let _ = std::fs::write(path(), State::render(dir, queues, downloads, nerd));
     }
 
     /// Saved queues, or the single default queue when there is nothing saved.

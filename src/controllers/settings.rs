@@ -13,6 +13,18 @@ impl App {
         self.message = format!("theme: {}", self.theme.name);
     }
 
+    /// Nerd font glyphs for the status column, for terminals whose font has
+    /// them; plain unicode otherwise, since the fallback is a box.
+    pub fn toggle_nerd(&mut self) {
+        self.nerd = !self.nerd;
+        self.save_state();
+        self.message = if self.nerd {
+            "nerd font icons on".into()
+        } else {
+            "nerd font icons off".into()
+        };
+    }
+
     /// Where new downloads are written. Running transfers keep their old dir.
     pub fn set_dir(&mut self, dir: &str) {
         let path = PathBuf::from(expand_home(dir.trim()));
@@ -28,7 +40,7 @@ impl App {
     /// Persist the directory and queues. Called by every action that changes
     /// them, so there is no separate "save settings" step to forget.
     pub fn save_state(&self) {
-        State::save(&self.dir, &self.queues, &self.downloads);
+        State::save(&self.dir, &self.queues, &self.downloads, self.nerd);
     }
 }
 

@@ -5,7 +5,7 @@ use muxget::models::state::State;
 #[test]
 fn round_trips_directory_and_queues() {
     let queues = [Queue::new(0, "default", 3), Queue::new(1, "media", 6)];
-    let text = State::render(std::path::Path::new("/tmp/dl"), &queues, &[]);
+    let text = State::render(std::path::Path::new("/tmp/dl"), &queues, &[], false);
 
     let back = State::parse(&text);
     assert_eq!(back.dir, Some("/tmp/dl".into()));
@@ -31,7 +31,7 @@ fn missing_or_broken_lines_fall_back_instead_of_failing() {
 fn pause_state_is_not_persisted() {
     let mut q = Queue::new(0, "default", 3);
     q.paused = true;
-    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[]));
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[], false));
     assert!(!back.queues[0].paused, "a restart starts unpaused");
 }
 
@@ -62,6 +62,7 @@ fn downloads_round_trip_and_unfinished_ones_come_back_queued() {
         std::path::Path::new("/tmp"),
         &[Queue::new(0, "default", 3), Queue::new(1, "media", 3)],
         &downloads,
+        false,
     ));
 
     assert_eq!(back.downloads.len(), 5);
@@ -77,7 +78,7 @@ fn downloads_round_trip_and_unfinished_ones_come_back_queued() {
 #[test]
 fn a_url_containing_a_pipe_survives() {
     let downloads = [row(0, Status::Done, "https://example.com/x?a=1|2")];
-    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &downloads));
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &downloads, false));
     assert_eq!(back.downloads[0].url, "https://example.com/x?a=1|2");
 }
 
@@ -91,7 +92,7 @@ fn broken_download_lines_are_skipped() {
 fn a_queue_window_round_trips_and_is_optional() {
     let mut q = muxget::models::queue::Queue::new(0, "night", 3);
     q.schedule = muxget::models::queue::parse_window("22:00-06:00");
-    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[]));
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[], false));
     assert_eq!(back.queues[0].schedule, Some((22 * 60, 6 * 60)));
 
     // Files written before schedules existed still load.
@@ -115,6 +116,7 @@ fn per_item_settings_round_trip_and_stay_optional() {
         std::path::Path::new("/tmp"),
         &[],
         &[d, plain],
+        false,
     ));
 
     assert_eq!(back.downloads[0].over.dir, "/tmp/here");
@@ -123,4 +125,14 @@ fn per_item_settings_round_trip_and_stay_optional() {
 
     // A stray `over` with no download above it is ignored, not a panic.
     assert!(State::parse("over = /tmp||1M\n").downloads.is_empty());
+}
+
+#[test]
+fn the_nerd_font_choice_round_trips_and_defaults_off() {
+    let on = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &[], true));
+    assert!(on.nerd);
+    let off = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &[], false));
+    assert!(!off.nerd);
+    // A file written before the option existed.
+    assert!(!State::parse("dir = /tmp\n").nerd);
 }

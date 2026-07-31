@@ -227,14 +227,15 @@ fn draw_table(f: &mut Frame, app: &App, area: Rect) {
 
     let rows = visible.iter().enumerate().map(|(row, &i)| {
         let d = &app.downloads[i];
-        let (icon, state, color) = match &d.status {
-            Status::Queued => ("·", "queued".into(), t.muted),
-            Status::Running => ("▶", d.progress.eta.clone(), t.accent),
-            Status::Paused => ("⏸", "paused".into(), t.err),
-            Status::Done => ("✓", "done".into(), t.ok),
-            Status::Cancelled => ("■", "cancelled".into(), t.muted),
-            Status::Failed(e) => ("✗", e.clone(), t.err),
+        let (state, color) = match &d.status {
+            Status::Queued => ("queued".into(), t.muted),
+            Status::Running => (d.progress.eta.clone(), t.accent),
+            Status::Paused => ("paused".into(), t.err),
+            Status::Done => ("done".into(), t.ok),
+            Status::Cancelled => ("cancelled".into(), t.muted),
+            Status::Failed(e) => (e.clone(), t.err),
         };
+        let icon = status_icon(&d.status, app.nerd);
         // Zebra striping so long lists stay scannable.
         let bg = if row % 2 == 0 { t.bg } else { t.panel };
         let mut cells = vec![
@@ -317,7 +318,11 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(
         Paragraph::new(vec![
             field("name", name_of(d), color),
-            field("status", state, color),
+            field(
+                "status",
+                format!("{} {}", status_icon(&d.status, app.nerd), state),
+                color,
+            ),
             field("speed", d.progress.speed.clone(), t.accent),
             field("eta", d.progress.eta.clone(), t.accent),
             Line::default(),
@@ -390,6 +395,19 @@ pub fn name_of(d: &Download) -> String {
         last.to_string()
     } else {
         format!("{last}?{query}")
+    }
+}
+
+/// Status glyph. Nerd font codepoints only when the user says their font has
+/// them — the fallback box is worse than the plain unicode it replaces.
+pub fn status_icon(status: &Status, nerd: bool) -> &'static str {
+    match status {
+        Status::Queued => if nerd { "\u{f017}" } else { "·" },
+        Status::Running => if nerd { "\u{f019}" } else { "▶" },
+        Status::Paused => if nerd { "\u{f04c}" } else { "⏸" },
+        Status::Done => if nerd { "\u{f00c}" } else { "✓" },
+        Status::Cancelled => if nerd { "\u{f04d}" } else { "■" },
+        Status::Failed(_) => if nerd { "\u{f00d}" } else { "✗" },
     }
 }
 

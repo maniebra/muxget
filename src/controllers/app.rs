@@ -31,6 +31,8 @@ pub struct App {
     /// Index into `queues` — the queue being viewed; new downloads land here.
     pub current: usize,
     pub theme: Theme,
+    /// Use nerd font glyphs for status icons.
+    pub nerd: bool,
     pub themes: Vec<Theme>,
     /// Aggregate bytes/s, newest last, for the sparkline.
     pub history: Vec<u64>,
@@ -49,6 +51,7 @@ impl App {
     pub fn new(dir: PathBuf) -> Self {
         let state = State::load();
         let mut app = App::with_queues(dir, state.queues_or_default());
+        app.nerd = state.nerd;
         app.restore(&state.downloads);
         app
     }
@@ -72,6 +75,7 @@ impl App {
             next_id: 0,
             next_queue_id,
             theme: Theme::saved().unwrap_or_default(),
+            nerd: false,
             themes: Theme::all(),
             history: Vec::new(),
             ticked: Instant::now(),

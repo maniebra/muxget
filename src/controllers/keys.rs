@@ -84,6 +84,7 @@ pub const SETTINGS_MENU: &[MenuItem] = &[
     MenuItem { key: 't', label: "next theme" },
     MenuItem { key: 'T', label: "previous theme" },
     MenuItem { key: 'd', label: "download directory" },
+    MenuItem { key: 'n', label: "nerd font icons" },
     MenuItem { key: 'a', label: "aria2c options" },
     MenuItem { key: 'y', label: "yt-dlp options" },
 ];
@@ -242,6 +243,7 @@ impl App {
             ('s', 't') => self.set_theme(self.theme.next(&self.themes)),
             ('s', 'T') => self.set_theme(self.theme.prev(&self.themes)),
             ('s', 'd') => self.dialog = Some(Dialog::SetDir(self.dir.display().to_string())),
+            ('s', 'n') => self.toggle_nerd(),
             ('s', 'a') => self.options = Some(Options::open("aria2c")),
             ('s', 'y') => self.options = Some(Options::open("yt-dlp")),
             ('i', 'r') => {

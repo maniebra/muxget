@@ -8,6 +8,7 @@ use ratatui::DefaultTerminal;
 use crate::models::download::{Download, Status, Update};
 use crate::models::queue::{self, Queue};
 use crate::models::{backend, pick};
+use crate::controllers::options::Options;
 use crate::views;
 use crate::views::theme::Theme;
 
@@ -46,6 +47,8 @@ pub struct App {
     pub downloads: Vec<Download>,
     pub selected: usize,
     pub dialog: Option<Dialog>,
+    /// Backend options panel; owns the keyboard while open.
+    pub options: Option<Options>,
     /// Half-typed key sequence, e.g. `g` waiting for `n`. Shows the menu.
     pub pending: Option<char>,
     pub message: String,
@@ -111,6 +114,8 @@ pub const SETTINGS_MENU: &[MenuItem] = &[
     MenuItem { key: 't', label: "next theme" },
     MenuItem { key: 'T', label: "previous theme" },
     MenuItem { key: 'd', label: "download directory" },
+    MenuItem { key: 'a', label: "aria2c options" },
+    MenuItem { key: 'y', label: "yt-dlp options" },
 ];
 
 pub fn menu_for(prefix: char) -> Option<(&'static str, &'static [MenuItem])> {
@@ -148,6 +153,7 @@ impl App {
             downloads: Vec::new(),
             selected: 0,
             dialog: None,
+            options: None,
             pending: None,
             message: String::new(),
             filter: Filter::All,
@@ -485,6 +491,18 @@ impl App {
     /// Handle one keypress. Returns true when the app should quit.
     /// An open dialog owns the keyboard until it closes.
     pub fn on_key(&mut self, key: KeyCode) -> bool {
+        // The options panel owns the keyboard while it is open.
+        if let Some(panel) = &mut self.options {
+            if panel.on_key(key) {
+                let panel = self.options.take().expect("open above");
+                self.message = match panel.save() {
+                    Ok(()) => format!("{} options saved", panel.backend),
+                    Err(e) => format!("could not save {} options: {e}", panel.backend),
+                };
+            }
+            return false;
+        }
+
         // A half-typed sequence swallows the next key, vim style.
         if let Some(prefix) = self.pending.take() {
             return self.on_sequence(prefix, key);
@@ -567,6 +585,8 @@ impl App {
             ('s', 'd') => {
                 self.dialog = Some(Dialog::SetDir(self.dir.display().to_string()));
             }
+            ('s', 'a') => self.options = Some(Options::open("aria2c")),
+            ('s', 'y') => self.options = Some(Options::open("yt-dlp")),
             ('g', 'n') => self.dialog = Some(Dialog::QueueNew(String::new())),
             ('g', 'r') => {
                 self.dialog = Some(Dialog::QueueRename(self.current, self.queue().name.clone()))

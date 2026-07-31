@@ -3,7 +3,7 @@ use std::process::Command;
 
 use crate::models::backend::Backend;
 use crate::models::download::Progress;
-use crate::utils::parse;
+use crate::utils::{args, parse};
 
 pub struct Aria2;
 
@@ -35,8 +35,9 @@ impl Backend for Aria2 {
             .arg("--console-log-level=warn")
             .arg("--continue=true")
             .arg("--dir")
-            .arg(dir)
-            .arg(url);
+            .arg(dir);
+        // User flags come last so they override anything set above.
+        c.args(args::load(self.name())).arg(url);
         c
     }
 

@@ -63,8 +63,9 @@ pub fn draw(f: &mut Frame, app: &App) {
         draw_details(f, app, area);
     }
     draw_footer(f, app, footer);
-    // Last, so the popover sits on top of everything.
+    // Last, so popovers sit on top of everything.
     crate::views::dialog::draw(f, app);
+    crate::views::options::draw(f, app);
 }
 
 /// Bordered panel on the sidebar/alt background.

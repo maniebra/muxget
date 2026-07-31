@@ -1,6 +1,6 @@
-use std::path::PathBuf;
-
 use ratatui::style::Color;
+
+use crate::utils::config_dir;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
@@ -135,14 +135,6 @@ impl Theme {
         let name = std::fs::read_to_string(config_dir().join("theme")).ok()?;
         Some(Theme::named(name.trim()))
     }
-}
-
-fn config_dir() -> PathBuf {
-    match std::env::var_os("XDG_CONFIG_HOME") {
-        Some(d) => PathBuf::from(d),
-        None => PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"),
-    }
-    .join("muxget")
 }
 
 fn hex(s: &str) -> Option<Color> {

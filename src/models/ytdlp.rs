@@ -3,7 +3,7 @@ use std::process::Command;
 
 use crate::models::backend::Backend;
 use crate::models::download::Progress;
-use crate::utils::parse;
+use crate::utils::{args, parse};
 
 pub struct YtDlp;
 
@@ -23,8 +23,9 @@ impl Backend for YtDlp {
             .arg("--no-color")
             .arg("--continue")
             .arg("-P")
-            .arg(dir)
-            .arg(url);
+            .arg(dir);
+        // User flags come last so they override anything set above.
+        c.args(args::load(self.name())).arg(url);
         c
     }
 

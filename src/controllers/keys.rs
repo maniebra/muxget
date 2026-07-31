@@ -96,6 +96,7 @@ pub const ITEM_MENU: &[MenuItem] = &[
     MenuItem { key: 'R', label: "remove and delete the file" },
     MenuItem { key: 'o', label: "open" },
     MenuItem { key: 'f', label: "open containing folder" },
+    MenuItem { key: 'F', label: "force restart (torrents)" },
 ];
 
 /// Settings commands, reached with the `s` prefix.
@@ -282,6 +283,7 @@ impl App {
                     self.dialog = Some(Dialog::DeleteData(self.selected));
                 }
             }
+            ('i', 'F') => self.force_restart(self.selected),
             ('i', 'o') => self.open_item(self.selected),
             ('i', 'f') => self.reveal_item(self.selected),
             ('g', 'n') => self.dialog = Some(Dialog::QueueNew(String::new())),

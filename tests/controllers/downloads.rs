@@ -213,3 +213,16 @@ fn remove_with_data_deletes_the_file_and_its_sidecar() {
     assert!(app.downloads.is_empty());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn force_restart_is_refused_for_anything_but_a_torrent() {
+    let mut app = app_with(&[Status::Queued]);
+    app.queues[0].paused = true;
+
+    app.force_restart(0);
+    assert_eq!(app.message, "force restart is for torrents");
+    assert_eq!(app.downloads[0].status, Status::Queued, "left alone");
+    assert!(muxget::models::aria2::is_torrent("magnet:?xt=urn:btih:abc"));
+    assert!(muxget::models::aria2::is_torrent("https://x.com/a.TORRENT"));
+    assert!(!muxget::models::aria2::is_torrent("https://x.com/a.iso"));
+}

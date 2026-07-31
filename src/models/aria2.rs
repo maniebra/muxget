@@ -15,6 +15,12 @@ const FILE_EXTS: &[&str] = &[
     ".exe", ".msi", ".dmg", ".appimage", ".bin", ".pdf", ".epub", ".jpg", ".png", ".mp3", ".flac",
 ];
 
+/// A magnet or `.torrent`, as opposed to the direct files aria2 also fetches.
+pub fn is_torrent(url: &str) -> bool {
+    let url = url.to_lowercase();
+    url.starts_with("magnet:") || url.ends_with(".torrent")
+}
+
 impl Backend for Aria2 {
     fn name(&self) -> &'static str {
         "aria2c"

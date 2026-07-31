@@ -8,8 +8,8 @@ use ratatui::Frame;
 
 use crate::controllers::app::App;
 use crate::controllers::downloads::Filter;
-use crate::models::download::{Download, Status};
-use crate::utils::parse::human;
+use crate::models::download::{Download, Progress, Status};
+use crate::utils::parse::{bytes, human};
 use crate::views::theme::Theme;
 
 /// Widths at which panels earn their space. Below each, the panel is dropped
@@ -116,10 +116,14 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         chip(format!("{} failed", count(Filter::Failed)), t.err),
         sep.clone(),
         Span::styled(
-            format!("{}/s", human(app.speed())),
+            format!("↓{}/s", human(app.speed())),
             Style::default().fg(t.ok).bg(t.panel).add_modifier(Modifier::BOLD),
         ),
     ];
+    if app.upload() > 0.0 {
+        spans.push(sep.clone());
+        spans.push(chip(format!("↑{}/s", human(app.upload())), t.accent));
+    }
     // Path is the first thing to drop on a narrow terminal.
     if area.width > 70 {
         spans.push(sep);
@@ -229,6 +233,10 @@ fn draw_table(f: &mut Frame, app: &App, area: Rect) {
         let d = &app.downloads[i];
         let (state, color) = match &d.status {
             Status::Queued => ("queued".into(), t.muted),
+            // A torrent at 100% is still running: it is seeding, not stalled.
+            Status::Running if d.progress.is_torrent() && d.progress.percent >= 100.0 => {
+                ("seeding".into(), t.ok)
+            }
             Status::Running => (d.progress.eta.clone(), t.accent),
             Status::Paused => ("paused".into(), t.err),
             Status::Done => ("done".into(), t.ok),
@@ -245,7 +253,7 @@ fn draw_table(f: &mut Frame, app: &App, area: Rect) {
         cells.push(Cell::from(bar(d.progress.percent, if wide { 14 } else { 8 })).style(Style::default().fg(color)));
         cells.push(Cell::from(format!("{:>5.1}%", d.progress.percent)));
         if mid {
-            cells.push(Cell::from(d.progress.speed.clone()).style(Style::default().fg(t.muted)));
+            cells.push(Cell::from(rates(&d.progress)).style(Style::default().fg(t.muted)));
             cells.push(Cell::from(state).style(Style::default().fg(color)));
         }
         Row::new(cells).style(Style::default().bg(bg).fg(t.fg))
@@ -300,10 +308,14 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let [top, gauge] = Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(area);
+    // Borders, padding and the label column. A value that does not fit is cut:
+    // a magnet link is thousands of characters and would fill the panel.
+    let inner = area.width.saturating_sub(4) as usize;
+    let room = inner.saturating_sub(9);
     let field = |k: &str, v: String, c| {
         Line::from(vec![
-            Span::styled(format!("{k:<8}"), Style::default().fg(t.muted).bg(t.panel)),
-            Span::styled(v, Style::default().fg(c).bg(t.panel)),
+            Span::styled(format!("{k:<9}"), Style::default().fg(t.muted).bg(t.panel)),
+            Span::styled(truncate(&v, room), Style::default().fg(c).bg(t.panel)),
         ])
     };
     let (state, color) = match &d.status {
@@ -323,8 +335,41 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
                 format!("{} {}", status_icon(&d.status, app.nerd), state),
                 color,
             ),
+            if d.progress.total.is_empty() {
+                Line::default()
+            } else {
+                field(
+                    "size",
+                    format!("{} / {}", d.progress.done, d.progress.total),
+                    t.fg,
+                )
+            },
             field("speed", d.progress.speed.clone(), t.accent),
             field("eta", d.progress.eta.clone(), t.accent),
+            if d.progress.is_torrent() {
+                field("upload", swarm_upload(&d.progress), t.accent)
+            } else {
+                Line::default()
+            },
+            if d.progress.is_torrent() {
+                field("peers", d.progress.peers.to_string(), t.fg)
+            } else {
+                Line::default()
+            },
+            if d.progress.is_torrent() {
+                field(
+                    "seeders",
+                    d.progress.seeders.unwrap_or(0).to_string(),
+                    t.ok,
+                )
+            } else {
+                Line::default()
+            },
+            if d.progress.is_torrent() {
+                field("leechers", d.progress.leechers().to_string(), t.muted)
+            } else {
+                Line::default()
+            },
             if d.over.user.is_empty() {
                 Line::default()
             } else {
@@ -332,7 +377,12 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
                 field("login", d.over.user.clone(), t.muted)
             },
             Line::styled("url", Style::default().fg(t.muted).bg(t.panel)),
-            Line::styled(d.url.clone(), Style::default().fg(t.fg).bg(t.panel)),
+            // Three wrapped lines of it, so trackers cannot push the fields
+            // above off the panel.
+            Line::styled(
+                truncate(&d.url, inner * 3),
+                Style::default().fg(t.fg).bg(t.panel),
+            ),
         ])
         .wrap(Wrap { trim: true })
         .block(panel(t, "details", t.panel).padding(Padding::horizontal(1))),
@@ -371,7 +421,12 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
         ));
         spans.push(Span::styled(format!(" {label}  "), Style::default().fg(t.muted).bg(t.panel)));
     }
-    spans.push(Span::styled(app.message.clone(), Style::default().fg(t.ok).bg(t.panel)));
+    let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+    let room = (area.width as usize).saturating_sub(used + 4);
+    spans.push(Span::styled(
+        truncate(&app.message, room),
+        Style::default().fg(t.ok).bg(t.panel),
+    ));
 
     f.render_widget(
         Paragraph::new(Line::from(spans))
@@ -389,6 +444,13 @@ pub fn name_of(d: &Download) -> String {
     }
     if !d.over.name.is_empty() {
         return d.over.name.clone();
+    }
+    // A magnet carries its display name in `dn`; the info hash tells nobody
+    // anything.
+    if d.url.starts_with("magnet:") {
+        if let Some(dn) = d.url.split(['?', '&']).find_map(|p| p.strip_prefix("dn=")) {
+            return dn.replace('+', " ");
+        }
     }
     let (path, query) = match d.url.split_once('?') {
         Some((path, query)) => (path, query.split('#').next().unwrap_or("")),
@@ -412,6 +474,22 @@ pub fn status_icon(status: &Status, nerd: bool) -> &'static str {
         Status::Done => if nerd { "\u{f00c}" } else { "✓" },
         Status::Cancelled => if nerd { "\u{f04d}" } else { "■" },
         Status::Failed(_) => if nerd { "\u{f00d}" } else { "✗" },
+    }
+}
+
+/// `1.2MiB` alone, or `1.2MiB (30MiB total)` once anything has been sent.
+fn swarm_upload(p: &Progress) -> String {
+    match p.uploaded.is_empty() {
+        true => p.upload.clone(),
+        false => format!("{} ({} total)", p.upload, p.uploaded),
+    }
+}
+
+/// `5.0MiB` alone, or `5.0MiB ↑1.0MiB` while a torrent is uploading.
+fn rates(p: &Progress) -> String {
+    match p.upload.is_empty() || bytes(&p.upload).unwrap_or(0.0) == 0.0 {
+        true => p.speed.clone(),
+        false => format!("{} ↑{}", p.speed, p.upload),
     }
 }
 

@@ -3,6 +3,26 @@ pub struct Progress {
     pub percent: f32,
     pub speed: String,
     pub eta: String,
+    /// Bytes done and expected, as the backend wrote them.
+    pub done: String,
+    pub total: String,
+    /// Upload rate, session total, connected peers and seeders. Only aria2
+    /// torrents report these; `seeders` staying `None` marks a row as not one.
+    pub upload: String,
+    pub uploaded: String,
+    pub peers: u32,
+    pub seeders: Option<u32>,
+}
+
+impl Progress {
+    pub fn is_torrent(&self) -> bool {
+        self.seeders.is_some()
+    }
+
+    /// Peers that are not seeding, so still downloading themselves.
+    pub fn leechers(&self) -> u32 {
+        self.peers.saturating_sub(self.seeders.unwrap_or(0))
+    }
 }
 
 /// Per-download settings from the add form. Empty means "use the app-wide

@@ -34,3 +34,18 @@ fn a_name_identifies_the_item() {
     d.path = Some("/tmp/dl/real name.mkv".into());
     assert_eq!(name_of(&d), "real name.mkv");
 }
+
+#[test]
+fn a_magnet_shows_its_display_name() {
+    let d = row("magnet:?xt=urn:btih:abc123&dn=Some+Release+2024&tr=udp://x");
+    assert_eq!(name_of(&d), "Some Release 2024");
+    let real = "magnet:?xt=urn:btih:11EC998CE2818DCF19A8B0336381BCCE5EE209CA\
+&dn=Family.Guy.S24E09.1080p.WEB.h264-EDITH&tr=http%3A%2F%2Fp4p.arenabg.com";
+    assert_eq!(name_of(&row(real)), "Family.Guy.S24E09.1080p.WEB.h264-EDITH");
+
+    // Without a name there is nothing better than the url itself.
+    assert_eq!(
+        name_of(&row("magnet:?xt=urn:btih:abc123")),
+        "magnet:?xt=urn:btih:abc123"
+    );
+}

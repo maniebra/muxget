@@ -58,3 +58,51 @@ fn destination_lines_from_both_backends() {
     assert_eq!(destination("gid   |stat|avg speed  |path/URI"), None);
     assert_eq!(destination("[download]  42.0% of 1.0GiB at 3MiB/s"), None);
 }
+
+#[test]
+fn aria2_torrent_line_carries_peers_and_upload() {
+    use muxget::utils::parse::aria2;
+
+    let p = aria2("[#8a1f2b 12MiB/100MiB(12%) CN:8 SD:3 DL:5.0MiB UL:1.2MiB(30MiB) ETA:17s]")
+        .expect("parsed");
+    assert_eq!(p.percent, 12.0);
+    assert_eq!(p.speed, "5.0MiB");
+    assert_eq!(p.upload, "1.2MiB");
+    assert_eq!(p.uploaded, "30MiB", "the bracketed session total");
+    assert_eq!(p.peers, 8);
+    assert_eq!(p.seeders, Some(3));
+    assert_eq!(p.leechers(), 5, "peers that are not seeding");
+    assert!(p.is_torrent());
+
+    // A plain http download has no SD/UL, so it is not a torrent.
+    let p = aria2("[#8a1f2b 12MiB/100MiB(12%) CN:1 DL:5.0MiB ETA:17s]").expect("parsed");
+    assert_eq!(p.peers, 1);
+    assert_eq!(p.seeders, None);
+    assert!(!p.is_torrent());
+    assert_eq!(p.upload, "");
+    assert_eq!(p.uploaded, "");
+}
+
+#[test]
+fn a_torrent_without_a_percent_falls_back_to_the_sizes() {
+    use muxget::utils::parse::aria2;
+
+    // What aria2 prints while a magnet's metadata is still coming in.
+    let p = aria2("[#b85daa 0B/0B CN:0 SD:0 DL:0B]").expect("parsed");
+    assert_eq!(p.percent, 0.0);
+    assert!(p.is_torrent());
+
+    // Once the size is known but the percent is still absent.
+    let p = aria2("[#b85daa 256MiB/1.0GiB CN:32 SD:12 DL:2.5MiB]").expect("parsed");
+    assert_eq!(p.percent, 25.0);
+    assert_eq!(p.done, "256MiB");
+    assert_eq!(p.total, "1.0GiB");
+
+    // Some builds prefix the sizes.
+    assert_eq!(
+        aria2("[#b85daa SIZE:512MiB/1.0GiB CN:1 SD:1 DL:0B]").unwrap().percent,
+        50.0
+    );
+    // Not a progress line.
+    assert!(aria2("FILE: [MEMORY][METADATA]something").is_none());
+}

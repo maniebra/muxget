@@ -3,7 +3,7 @@ use std::process::Stdio;
 use crate::controllers::app::App;
 use crate::models::download::{Download, Overrides, Progress, Status, Update};
 use crate::models::state::SavedDownload;
-use crate::models::{backend, pick, queue, ytdlp};
+use crate::models::{aria2, backend, pick, queue, ytdlp};
 use crate::utils::parse::{bytes, for_each_line};
 
 /// Which rows the list shows.
@@ -207,6 +207,22 @@ impl App {
         }
     }
 
+    /// Stop a torrent and start it again at once, ignoring the queue's slot
+    /// limit and any pause — the swarm is what a stuck torrent needs, not a
+    /// place in the queue.
+    pub fn force_restart(&mut self, at: usize) {
+        let Some(d) = self.downloads.get_mut(at) else { return };
+        if !aria2::is_torrent(&d.url) {
+            self.message = "force restart is for torrents".into();
+            return;
+        }
+        d.kill();
+        d.progress = Default::default();
+        d.status = Status::Queued;
+        self.start(at);
+        self.message = format!("force restarted {}", self.downloads[at].url);
+    }
+
     /// Stop the download but keep the row.
     pub fn cancel(&mut self, at: usize) {
         if let Some(d) = self.downloads.get_mut(at) {
@@ -321,6 +337,15 @@ impl App {
             .iter()
             .filter(|d| d.status == Status::Running)
             .filter_map(|d| bytes(&d.progress.speed))
+            .sum()
+    }
+
+    /// Sum of the running torrents' upload rates, in bytes/s.
+    pub fn upload(&self) -> f64 {
+        self.downloads
+            .iter()
+            .filter(|d| d.status == Status::Running)
+            .filter_map(|d| bytes(&d.progress.upload))
             .sum()
     }
 

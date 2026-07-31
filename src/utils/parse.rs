@@ -2,14 +2,38 @@ use std::io::Read;
 
 use crate::models::download::Progress;
 
-/// `[#8a1f2b 12MiB/100MiB(12%) CN:1 DL:5.0MiB ETA:17s]`
+/// `[#8a1f2b 12MiB/100MiB(12%) CN:1 SD:2 DL:5.0MiB UL:1.0MiB(30MiB) ETA:17s]`.
+/// `SD` and `UL` only appear for torrents, and a torrent prints no `(12%)`
+/// until its metadata arrives — the sizes are the reliable part.
 pub fn aria2(line: &str) -> Option<Progress> {
-    let pct = line.split_once('(')?.1;
-    let pct: f32 = pct.split_once('%')?.0.parse().ok()?;
+    let mut tokens = line.strip_prefix("[#")?.split_whitespace();
+    tokens.next()?;
+    let (done, rest) = tokens.next()?.trim_start_matches("SIZE:").split_once('/')?;
+    let (total, percent) = match rest.split_once('(') {
+        Some((total, pct)) => (total, pct.trim_end_matches([')', '%']).parse().ok()),
+        None => (rest, None),
+    };
+    let percent = percent
+        .or_else(|| {
+            let (d, t) = (bytes(done)?, bytes(total)?);
+            (t > 0.0).then_some((d / t * 100.0) as f32)
+        })
+        .unwrap_or(0.0);
     Some(Progress {
-        percent: pct,
+        percent,
+        done: done.to_string(),
+        total: total.to_string(),
         speed: field(line, "DL:").unwrap_or_default(),
         eta: field(line, "ETA:").unwrap_or_default(),
+        // `UL:` carries the rate and, in brackets, the session total.
+        upload: field(line, "UL:")
+            .map(|v| v.split('(').next().unwrap_or_default().to_string())
+            .unwrap_or_default(),
+        uploaded: field(line, "UL:")
+            .and_then(|v| Some(v.split_once('(')?.1.trim_end_matches(')').to_string()))
+            .unwrap_or_default(),
+        peers: number(line, "CN:").unwrap_or(0),
+        seeders: number(line, "SD:"),
     })
 }
 
@@ -33,6 +57,7 @@ pub fn ytdlp(line: &str) -> Option<Progress> {
         percent: pct,
         speed,
         eta,
+        ..Default::default()
     })
 }
 
@@ -61,6 +86,10 @@ pub fn human(n: f64) -> String {
         unit += 1;
     }
     format!("{n:.1}{}", UNITS[unit])
+}
+
+fn number(line: &str, key: &str) -> Option<u32> {
+    field(line, key)?.parse().ok()
 }
 
 /// Value after `key`, up to the next space or `]`.

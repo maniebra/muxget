@@ -50,22 +50,26 @@ muxget --theme nord                     # theme for this run
 | `P` | pause / resume every queue |
 | `x` | stop it, keep the row |
 | `j` / `k` | move the selection |
+| `J` / `K` | move the download within its queue |
+| `s` | settings |
 | `Tab` | cycle filter: all / active / done / failed |
 | `[` `]` | switch queue |
 | `q` | quit |
 
-Queue and settings commands are two-key sequences; press the prefix and a menu
-shows the rest.
+Queue and item commands are two-key sequences; press the prefix and a menu
+shows the rest. Settings are one panel, opened with `s`.
 
 | sequence | action |
 |---|---|
 | `gn` `gr` `gd` | new / rename / delete queue |
 | `gj` `gk` | next / previous queue |
+| `g>` `g<` | move this queue in the tab order |
 | `gp` `gP` | pause / resume this queue / every queue |
+| `gt` | daily schedule for this queue |
 | `g+` `g-` | slots for this queue |
-| `st` `sT` | next / previous theme |
-| `sd` | download directory |
-| `sa` `sy` | aria2c / yt-dlp options panel |
+| `ir` `iR` | remove / remove with its file |
+| `io` `if` | open / open containing folder |
+| `iF` | force restart (torrents) |
 
 Pausing sends `SIGSTOP` to the backend process: connections and the partial
 file stay put, and the freed slot goes to whatever is queued behind it. `p`
@@ -113,10 +117,15 @@ Anything typed into the add form beats a rule.
 `min_size` cannot be answered before the download starts, so those rules are
 applied once the backend reports a total and the download moves queue then.
 
-## Backend options
+## Settings
 
-`sa` and `sy` open a form over the common aria2c and yt-dlp options: `Enter`
-toggles a switch or edits a value, `x` unsets one, `Esc` saves and closes.
+`s` opens the settings panel. `Tab` moves between its tabs, `j`/`k` move
+within one, `Esc` closes.
+
+- **general** — theme, download directory, nerd font icons.
+- **backends** — a form over the common aria2c and yt-dlp options: `Enter`
+  toggles a switch or edits a value, `b` switches backend, `x` unsets one.
+- **categories** — the routing rules as they will be applied.
 
 Everything is stored as plain flags in `~/.config/muxget/aria2c.args` and
 `yt-dlp.args`, passed to the tool verbatim and appended last, so they override
@@ -152,7 +161,7 @@ download = 1|queued|12.5|https://youtube.com/watch?v=abc
 ## Themes
 
 Six built in — tokyonight (default), catppuccin, monokai, gruvbox, nord,
-dracula. `st` cycles and remembers your choice.
+dracula. The general tab of `s` cycles them and remembers your choice.
 
 Add your own as `~/.config/muxget/themes/<name>.toml`; a file that reuses a
 built-in name overrides it. Missing keys keep the default colour:

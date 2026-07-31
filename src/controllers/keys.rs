@@ -4,7 +4,7 @@ use ratatui::layout::{Rect, Size};
 use crate::controllers::app::App;
 use crate::controllers::downloads::Filter;
 use crate::views::ui;
-use crate::controllers::options::Options;
+use crate::controllers::options::{Action, Settings};
 use crate::models::download::Overrides;
 use crate::utils;
 
@@ -103,21 +103,10 @@ pub const ITEM_MENU: &[MenuItem] = &[
     MenuItem { key: 'F', label: "force restart (torrents)" },
 ];
 
-/// Settings commands, reached with the `s` prefix.
-pub const SETTINGS_MENU: &[MenuItem] = &[
-    MenuItem { key: 't', label: "next theme" },
-    MenuItem { key: 'T', label: "previous theme" },
-    MenuItem { key: 'd', label: "download directory" },
-    MenuItem { key: 'n', label: "nerd font icons" },
-    MenuItem { key: 'a', label: "aria2c options" },
-    MenuItem { key: 'y', label: "yt-dlp options" },
-];
-
 pub fn menu_for(prefix: char) -> Option<(&'static str, &'static [MenuItem])> {
     match prefix {
         'g' => Some(("queue", QUEUE_MENU)),
         'i' => Some(("item", ITEM_MENU)),
-        's' => Some(("settings", SETTINGS_MENU)),
         _ => None,
     }
 }
@@ -134,13 +123,17 @@ fn char_of(key: KeyCode) -> Option<char> {
 impl App {
     /// Handle one keypress. Returns true when the app should quit.
     pub fn on_key(&mut self, key: KeyCode) -> bool {
-        if let Some(panel) = &mut self.options {
-            if panel.on_key(key) {
-                let panel = self.options.take().expect("open above");
-                self.message = match panel.save() {
-                    Ok(()) => format!("{} options saved", panel.backend),
-                    Err(e) => format!("could not save {} options: {e}", panel.backend),
-                };
+        if let Some(panel) = &mut self.settings {
+            match panel.on_key(key) {
+                Action::None => {}
+                Action::Close => self.close_settings(),
+                Action::NextTheme => self.set_theme(self.theme.next(&self.themes)),
+                Action::PrevTheme => self.set_theme(self.theme.prev(&self.themes)),
+                Action::ToggleNerd => self.toggle_nerd(),
+                Action::EditDir => {
+                    self.close_settings();
+                    self.dialog = Some(Dialog::SetDir(self.dir.display().to_string()));
+                }
             }
             return false;
         }
@@ -238,7 +231,9 @@ impl App {
     fn on_normal_key(&mut self, key: KeyCode) -> bool {
         match key {
             KeyCode::Char('q') => return true,
-            KeyCode::Char(c @ ('g' | 'i' | 's' | 'Z')) => self.pending = Some(c),
+            KeyCode::Char(c @ ('g' | 'i' | 'Z')) => self.pending = Some(c),
+            // Settings are one panel, not a menu of them.
+            KeyCode::Char('s') => self.settings = Some(Settings::open(0, "aria2c")),
             KeyCode::Char('a') => self.dialog = Some(Dialog::Add(Form::default())),
             KeyCode::Char('e') => {
                 if let Some(d) = self.downloads.get(self.selected) {
@@ -271,12 +266,6 @@ impl App {
         let Some(c) = char_of(key) else { return false };
         match (prefix, c) {
             ('Z', 'Z') | ('Z', 'Q') => return true,
-            ('s', 't') => self.set_theme(self.theme.next(&self.themes)),
-            ('s', 'T') => self.set_theme(self.theme.prev(&self.themes)),
-            ('s', 'd') => self.dialog = Some(Dialog::SetDir(self.dir.display().to_string())),
-            ('s', 'n') => self.toggle_nerd(),
-            ('s', 'a') => self.options = Some(Options::open("aria2c")),
-            ('s', 'y') => self.options = Some(Options::open("yt-dlp")),
             ('i', 'r') => {
                 if self.downloads.get(self.selected).is_some() {
                     self.dialog = Some(Dialog::Delete(self.selected));
@@ -339,7 +328,7 @@ impl App {
 /// so clicks are ignored while one is open.
 impl App {
     pub fn on_mouse(&mut self, ev: MouseEvent, size: Size) {
-        if self.dialog.is_some() || self.options.is_some() || self.pending.is_some() {
+        if self.dialog.is_some() || self.settings.is_some() || self.pending.is_some() {
             return;
         }
         let area = Rect::new(0, 0, size.width, size.height);

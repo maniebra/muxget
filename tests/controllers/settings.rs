@@ -35,27 +35,40 @@ fn typed(app: &mut App, keys: &str) {
 }
 
 #[test]
-fn settings_menu_cycles_themes_and_edits_the_directory() {
+fn the_settings_panel_changes_the_theme_and_the_directory() {
     let mut app = app_with(&[]);
     let first = app.theme.name.clone();
 
+    // `s` opens the panel itself; there is no menu in front of it.
     app.on_key(KeyCode::Char('s'));
-    assert_eq!(app.pending, Some('s'));
-    app.on_key(KeyCode::Char('t'));
-    assert_ne!(app.theme.name, first, "st moves forward");
-    typed(&mut app, "sT");
-    assert_eq!(app.theme.name, first, "sT moves back");
+    assert_eq!(app.pending, None);
+    assert!(app.settings.is_some());
 
-    // `t` alone no longer touches the theme.
-    app.on_key(KeyCode::Char('t'));
-    assert_eq!(app.theme.name, first);
+    app.on_key(KeyCode::Enter);
+    assert_ne!(app.theme.name, first, "the theme row moves forward");
+    app.on_key(KeyCode::Char('T'));
+    assert_eq!(app.theme.name, first, "and back");
 
-    typed(&mut app, "sd");
+    // The directory row hands over to the path dialog, closing the panel.
+    app.on_key(KeyCode::Down);
+    app.on_key(KeyCode::Enter);
+    assert!(app.settings.is_none());
     assert_eq!(app.dialog, Some(Dialog::SetDir(".".into())), "prefilled");
 
-    app.on_key(KeyCode::Esc);
-    typed(&mut app, "sd");
     typed(&mut app, "/definitely/not/here");
     app.on_key(KeyCode::Enter);
     assert_eq!(app.dir.display().to_string(), ".", "bad path is refused");
+
+    // Nerd icons are the third row.
+    app.on_key(KeyCode::Char('s'));
+    app.on_key(KeyCode::Down);
+    app.on_key(KeyCode::Down);
+    app.on_key(KeyCode::Enter);
+    assert!(app.nerd);
+
+    app.on_key(KeyCode::Esc);
+    assert!(app.settings.is_none(), "esc closes the panel");
+    // `t` alone still does nothing.
+    app.on_key(KeyCode::Char('t'));
+    assert_eq!(app.theme.name, first);
 }

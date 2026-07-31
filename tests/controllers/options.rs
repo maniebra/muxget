@@ -133,3 +133,84 @@ fn a_flag_that_carries_its_value_survives_a_round_trip() {
     other.pairs = args::to_pairs(&args::parse("--seed-time=120"));
     assert!(!other.is_set("--seed-time=0"));
 }
+
+mod settings {
+    use crossterm::event::KeyCode;
+    use muxget::controllers::options::{Action, Settings, TABS};
+
+    fn panel() -> Settings {
+        open(0, "aria2c")
+    }
+
+    /// A throwaway config dir: the panel reads and writes real files.
+    fn open(tab: usize, backend: &'static str) -> Settings {
+        std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir().join("muxget-tests"));
+        let mut panel = Settings::open(tab, backend);
+        panel.options.pairs.clear();
+        panel
+    }
+
+    #[test]
+    fn tabs_cycle_and_reset_the_cursor() {
+        let mut p = panel();
+        assert_eq!(TABS[p.tab], "general");
+
+        p.on_key(KeyCode::Down);
+        assert_eq!(p.cursor, 1);
+        p.on_key(KeyCode::Tab);
+        assert_eq!(TABS[p.tab], "backends");
+        assert_eq!(p.cursor, 0, "each tab starts at the top");
+
+        p.on_key(KeyCode::Tab);
+        assert_eq!(TABS[p.tab], "categories");
+        p.on_key(KeyCode::Tab);
+        assert_eq!(TABS[p.tab], "general", "wraps around");
+        p.on_key(KeyCode::BackTab);
+        assert_eq!(TABS[p.tab], "categories", "and backwards");
+    }
+
+    #[test]
+    fn general_rows_hand_their_action_to_the_app() {
+        let mut p = panel();
+        assert_eq!(p.on_key(KeyCode::Enter), Action::NextTheme);
+        p.on_key(KeyCode::Down);
+        assert_eq!(p.on_key(KeyCode::Enter), Action::EditDir);
+        p.on_key(KeyCode::Down);
+        assert_eq!(p.on_key(KeyCode::Enter), Action::ToggleNerd);
+        // The list ends rather than wrapping onto nothing.
+        p.on_key(KeyCode::Down);
+        assert_eq!(p.cursor, 2);
+        assert_eq!(p.on_key(KeyCode::Esc), Action::Close);
+    }
+
+    #[test]
+    fn the_backends_tab_edits_one_backend_at_a_time() {
+        let mut p = open(1, "aria2c");
+        assert_eq!(p.options.backend, "aria2c");
+
+        // `b` walks to the next backend, `Tab` still changes tab.
+        p.on_key(KeyCode::Char('b'));
+        assert_eq!(p.options.backend, "yt-dlp");
+        p.on_key(KeyCode::Char('b'));
+        assert_eq!(p.options.backend, "aria2c");
+
+        // Toggling reaches the form under the cursor.
+        let flag = "--check-integrity";
+        p.cursor = p.options.specs().iter().position(|s| s.flag == flag).unwrap();
+        p.on_key(KeyCode::Enter);
+        assert!(p.options.is_set(flag));
+    }
+
+    #[test]
+    fn a_value_being_typed_keeps_the_keyboard() {
+        let mut p = open(1, "aria2c");
+        p.cursor = p.options.specs().iter().position(|s| s.flag == "--split").unwrap();
+        p.on_key(KeyCode::Enter);
+        assert!(p.options.editing.is_some());
+
+        // `l` would change tab; while editing it is just a character.
+        p.on_key(KeyCode::Char('l'));
+        assert_eq!(TABS[p.tab], "backends");
+        assert_eq!(p.options.editing.as_deref(), Some("l"));
+    }
+}

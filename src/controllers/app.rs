@@ -7,7 +7,7 @@ use ratatui::DefaultTerminal;
 
 use crate::controllers::downloads::Filter;
 use crate::controllers::keys::Dialog;
-use crate::controllers::options::Options;
+use crate::controllers::options::Settings;
 use crate::models::download::{Download, Status, Update};
 use crate::models::queue::Queue;
 use crate::models::rule::{self, Rule};
@@ -22,8 +22,8 @@ pub struct App {
     pub downloads: Vec<Download>,
     pub selected: usize,
     pub dialog: Option<Dialog>,
-    /// Backend options panel; owns the keyboard while open.
-    pub options: Option<Options>,
+    /// Settings panel; owns the keyboard while open.
+    pub settings: Option<Settings>,
     /// Half-typed key sequence, e.g. `g` waiting for `n`. Shows the menu.
     pub pending: Option<char>,
     pub message: String,
@@ -80,7 +80,7 @@ impl App {
             downloads: Vec::new(),
             selected: 0,
             dialog: None,
-            options: None,
+            settings: None,
             pending: None,
             message: String::new(),
             filter: Filter::All,

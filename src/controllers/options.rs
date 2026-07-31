@@ -141,3 +141,100 @@ fn split(flag: &str) -> (&str, &str) {
         None => (flag, ""),
     }
 }
+
+/// The settings panel: a tab bar over the things that used to be scattered
+/// across single keys. `Options` above is what the backends tab shows.
+pub struct Settings {
+    pub tab: usize,
+    pub cursor: usize,
+    pub options: Options,
+}
+
+pub const TABS: [&str; 3] = ["general", "backends", "categories"];
+pub const GENERAL: [&str; 3] = ["theme", "download directory", "nerd font icons"];
+
+/// What the panel asks the app to do; everything else it handles itself.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Action {
+    None,
+    /// Save the backend form and close.
+    Close,
+    NextTheme,
+    PrevTheme,
+    EditDir,
+    ToggleNerd,
+}
+
+impl Settings {
+    pub fn open(tab: usize, backend: &'static str) -> Settings {
+        Settings { tab, cursor: 0, options: Options::open(backend) }
+    }
+
+    pub fn rows(&self) -> usize {
+        match self.tab {
+            0 => GENERAL.len(),
+            1 => self.options.specs().len(),
+            _ => 0,
+        }
+    }
+
+    /// Switching backend saves the form first; the file is the state.
+    pub fn set_backend(&mut self, backend: &'static str) -> std::io::Result<()> {
+        if self.options.backend == backend {
+            return Ok(());
+        }
+        let saved = self.options.save();
+        self.options = Options::open(backend);
+        self.cursor = 0;
+        saved
+    }
+
+    pub fn on_key(&mut self, key: KeyCode) -> Action {
+        // The backend form owns the keyboard while a value is being typed.
+        if self.tab == 1 && self.options.editing.is_some() {
+            self.options.cursor = self.cursor;
+            self.options.on_key(key);
+            return Action::None;
+        }
+        match key {
+            KeyCode::Esc | KeyCode::Char('q') => return Action::Close,
+            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => self.go(1),
+            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => self.go(-1),
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.cursor = (self.cursor + 1).min(self.rows().saturating_sub(1))
+            }
+            KeyCode::Up | KeyCode::Char('k') => self.cursor = self.cursor.saturating_sub(1),
+            key => return self.act(key),
+        }
+        Action::None
+    }
+
+    fn go(&mut self, delta: isize) {
+        self.tab = (self.tab as isize + delta).rem_euclid(TABS.len() as isize) as usize;
+        self.cursor = 0;
+    }
+
+    fn act(&mut self, key: KeyCode) -> Action {
+        match (self.tab, self.cursor, key) {
+            (0, 0, KeyCode::Enter) | (0, 0, KeyCode::Char(' ')) => Action::NextTheme,
+            (0, 0, KeyCode::Char('T')) => Action::PrevTheme,
+            (0, 1, KeyCode::Enter) => Action::EditDir,
+            (0, 2, KeyCode::Enter) | (0, 2, KeyCode::Char(' ')) => Action::ToggleNerd,
+            // One backend's form at a time; `b` walks to the next.
+            (1, _, KeyCode::Char('b')) => {
+                let names: Vec<&'static str> =
+                    crate::models::backends().iter().map(|b| b.name()).collect();
+                let at = names.iter().position(|n| *n == self.options.backend).unwrap_or(0);
+                let next = names[(at + 1) % names.len()];
+                let _ = self.set_backend(next);
+                Action::None
+            }
+            (1, _, key) => {
+                self.options.cursor = self.cursor;
+                self.options.on_key(key);
+                Action::None
+            }
+            _ => Action::None,
+        }
+    }
+}

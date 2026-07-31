@@ -45,3 +45,15 @@ impl App {
 }
 
 
+
+/// Panel-only helpers.
+impl App {
+    /// Close the settings panel, saving the backend form it was showing.
+    pub fn close_settings(&mut self) {
+        let Some(panel) = self.settings.take() else { return };
+        self.message = match panel.options.save() {
+            Ok(()) => format!("{} options saved", panel.options.backend),
+            Err(e) => format!("could not save {} options: {e}", panel.options.backend),
+        };
+    }
+}

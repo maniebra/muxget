@@ -86,7 +86,7 @@ pub const QUEUE_MENU: &[MenuItem] = &[
     MenuItem { key: 'r', label: "rename queue" },
     MenuItem { key: 'd', label: "delete queue" },
     MenuItem { key: 'p', label: "pause / resume this queue" },
-    MenuItem { key: 't', label: "schedule (HH:MM-HH:MM)" },
+    MenuItem { key: 't', label: "schedule (window, days, quota…)" },
     MenuItem { key: 'P', label: "pause / resume every queue" },
     MenuItem { key: 'j', label: "next queue" },
     MenuItem { key: 'k', label: "previous queue" },

@@ -89,7 +89,18 @@ pub fn draw(f: &mut Frame, app: &App) {
         ),
         Dialog::QueueSchedule(_, buf) => (
             "queue schedule",
-            named(t, "window", buf),
+            {
+                let mut lines = named(t, "schedule", buf);
+                lines.push(Line::default());
+                for help in [
+                    "22:00-06:00 mon-fri · on=2026-08-01 · once",
+                    "sync=6h · retry=3 · quota=150MB/4h",
+                    "shutdown · after=<command> (must come last)",
+                ] {
+                    lines.push(Line::styled(help, Style::default().fg(t.muted)));
+                }
+                lines
+            },
             "Enter save · empty clears · Esc cancel",
         ),
         Dialog::QueueDelete(at) => (
@@ -110,7 +121,12 @@ pub fn draw(f: &mut Frame, app: &App) {
     };
 
     // The add form is taller: its fields plus the preview.
-    let area = centered(f.area(), 76, if matches!(dialog, Dialog::Add(_)) { 16 } else { 9 });
+    let area = centered(f.area(), 76, match dialog {
+        Dialog::Add(_) => 16,
+        // Its field plus the three lines of spec help.
+        Dialog::QueueSchedule(..) => 13,
+        _ => 9,
+    });
     // Clear so the list underneath does not bleed through the popover.
     f.render_widget(Clear, area);
     f.render_widget(

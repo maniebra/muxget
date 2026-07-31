@@ -21,6 +21,7 @@ fn app_with(statuses: &[Status]) -> App {
             over: Default::default(),
         path: None,
         pid: None,
+        tries: 0,
         })
         .collect();
     app
@@ -37,6 +38,7 @@ fn running_row(id: usize) -> Download {
         over: Default::default(),
         path: None,
         pid: None,
+        tries: 0,
     }
 }
 
@@ -212,4 +214,66 @@ fn queues_reorder_without_moving_their_downloads() {
     // The ends do not wrap; there is nowhere further to go.
     app.move_queue(-1);
     assert_eq!(app.queues[0].name, "media");
+}
+
+#[test]
+fn a_full_spec_parses_every_part() {
+    let mut app = app_with(&[]);
+    app.set_schedule(0, "22:00-06:00 mon-fri sync=6h retry=3 quota=150MB/4h once shutdown after=notify-send done");
+    let q = &app.queues[0];
+    assert_eq!(q.schedule, Some((22 * 60, 6 * 60)));
+    assert_eq!(q.days, 0b0011111, "mon..fri");
+    assert_eq!(q.sync, Some(6 * 60));
+    assert_eq!(q.retry, 3);
+    assert_eq!(q.quota, Some((150 * 1024 * 1024, 4 * 60)));
+    assert!(q.once && q.shutdown);
+    assert_eq!(q.after, "notify-send done", "the command keeps its spaces");
+}
+
+#[test]
+fn weekdays_dates_and_quotas_all_close_the_window() {
+    let mut app = app_with(&[]);
+    app.set_schedule(0, "09:00-17:00 mon,wed");
+    let noon = |wday: u8, date: &str| muxget::models::queue::Now {
+        minutes: 12 * 60,
+        weekday: wday,
+        date: date.to_string(),
+    };
+    assert!(app.queues[0].open_now(&noon(1, "2026-08-03")), "monday");
+    assert!(!app.queues[0].open_now(&noon(2, "2026-08-04")), "tuesday");
+
+    app.set_schedule(0, "on=2026-08-01");
+    assert!(app.queues[0].open_now(&noon(6, "2026-08-01")));
+    assert!(!app.queues[0].open_now(&noon(7, "2026-08-02")), "another day");
+
+    app.set_schedule(0, "quota=1MB/4h");
+    assert!(app.queues[0].open_now(&noon(1, "2026-08-03")), "quota unspent");
+    app.queues[0].used = 2 * 1024 * 1024;
+    assert!(!app.queues[0].open_now(&noon(1, "2026-08-03")), "quota spent");
+}
+
+#[test]
+fn a_failure_is_retried_up_to_the_queues_limit() {
+    let mut app = app_with(&[Status::Failed("boom".into())]);
+    app.set_schedule(0, "retry=2");
+    // Nothing can actually start here, so the row is put back by hand.
+    for expected in [1, 2] {
+        app.retry_failed(0);
+        assert_eq!(app.downloads[0].tries, expected);
+        app.downloads[0].status = Status::Failed("boom".into());
+    }
+    app.retry_failed(0);
+    assert_eq!(app.downloads[0].tries, 2, "past the limit the failure sticks");
+    assert!(matches!(app.downloads[0].status, Status::Failed(_)));
+}
+
+#[test]
+fn a_quota_is_charged_from_the_reported_speed() {
+    let mut app = app_with(&[Status::Running]);
+    app.set_schedule(0, "quota=1MB/4h");
+    app.downloads[0].progress.speed = "1.0MiB/s".into();
+    app.charge_quotas(2.0);
+    assert!(app.queues[0].used >= 2 * 1000 * 1000, "two seconds of traffic");
+    app.apply_schedules();
+    assert!(app.queues[0].paused, "over quota, so parked until the period rolls");
 }

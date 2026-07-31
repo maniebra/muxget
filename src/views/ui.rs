@@ -187,11 +187,11 @@ fn draw_sidebar(f: &mut Frame, app: &App, queues: Rect, filters: Rect) {
                     "{} {:<9}{}",
                     if on { "▸" } else { " " },
                     truncate(&q.name, 9),
-                    match (q.paused, q.schedule) {
-                        // A window explains the pause it causes.
-                        (_, Some(_)) => q.window(),
-                        (true, None) => "paused".to_string(),
-                        (false, None) => format!("{}/{}", app.active_in(q.id), q.max_active),
+                    match (q.paused, q.scheduled()) {
+                        // A schedule explains the pause it causes.
+                        (_, true) => truncate(&q.window(), 11),
+                        (true, false) => "paused".to_string(),
+                        (false, false) => format!("{}/{}", app.active_in(q.id), q.max_active),
                     }
                 ),
                 style,

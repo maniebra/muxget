@@ -75,6 +75,9 @@ pub struct Download {
     /// waiting on a child holds it, and killing through the same lock is how
     /// a quit hangs and leaves the download orphaned.
     pub pid: Option<u32>,
+    /// Failed attempts so far, against the queue's retry limit. A restart is
+    /// a fresh start, so this is not persisted.
+    pub tries: u8,
 }
 
 impl Download {

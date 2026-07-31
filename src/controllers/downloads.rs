@@ -139,6 +139,7 @@ impl App {
             progress: Default::default(),
             path: None,
             pid: None,
+            tries: 0,
         });
         self.message = format!("queued {url}");
         self.save_state();
@@ -205,6 +206,7 @@ impl App {
                 },
                 path: None,
                 pid: None,
+                tries: 0,
             });
         }
     }
@@ -397,6 +399,31 @@ impl App {
             .filter(|d| d.status == Status::Running)
             .filter_map(|d| bytes(&d.progress.speed))
             .sum()
+    }
+
+    /// Sum of the running downloads' speeds in one queue, in bytes/s.
+    pub fn speed_in(&self, queue: usize) -> f64 {
+        self.downloads
+            .iter()
+            .filter(|d| d.queue == queue && d.status == Status::Running)
+            .filter_map(|d| bytes(&d.progress.speed))
+            .sum()
+    }
+
+    /// A download that failed goes back in the queue while its queue's retry
+    /// limit allows it; past that the failure sticks.
+    pub fn retry_failed(&mut self, id: usize) {
+        let Some(at) = self.downloads.iter().position(|d| d.id == id) else { return };
+        let queue = self.downloads[at].queue;
+        let limit = self.queues.iter().find(|q| q.id == queue).map_or(0, |q| q.retry);
+        let d = &mut self.downloads[at];
+        if !matches!(d.status, Status::Failed(_)) || d.tries >= limit {
+            return;
+        }
+        d.tries += 1;
+        d.status = Status::Queued;
+        self.message = format!("retry {}/{limit} for {}", self.downloads[at].tries, self.downloads[at].url);
+        self.pump();
     }
 
     /// Sum of the running torrents' upload rates, in bytes/s.

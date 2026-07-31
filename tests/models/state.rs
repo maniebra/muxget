@@ -46,6 +46,7 @@ fn row(queue: usize, status: Status, url: &str) -> Download {
         over: Default::default(),
         path: None,
         pid: None,
+        tries: 0,
     }
 }
 
@@ -91,9 +92,16 @@ fn broken_download_lines_are_skipped() {
 #[test]
 fn a_queue_window_round_trips_and_is_optional() {
     let mut q = muxget::models::queue::Queue::new(0, "night", 3);
-    q.schedule = muxget::models::queue::parse_window("22:00-06:00");
+    q.set_spec("22:00-06:00 mon-fri retry=2 quota=150MB/4h");
     let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[], false));
     assert_eq!(back.queues[0].schedule, Some((22 * 60, 6 * 60)));
+    assert_eq!(back.queues[0].retry, 2);
+    assert_eq!(back.queues[0].quota, Some((150 * 1024 * 1024, 240)));
+    assert_eq!(back.queues[0].days, 0b0011111);
+
+    // A bare window, as files written before the fuller spec stored it.
+    let plain = State::parse("queue = night|3|22:00-06:00|0\n");
+    assert_eq!(plain.queues[0].schedule, Some((22 * 60, 6 * 60)));
 
     // Files written before schedules existed still load.
     let old = State::parse("queue = default|4\n");

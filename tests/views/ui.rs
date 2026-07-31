@@ -12,6 +12,7 @@ fn row(url: &str) -> Download {
         progress: Default::default(),
         path: None,
         pid: None,
+        tries: 0,
     }
 }
 

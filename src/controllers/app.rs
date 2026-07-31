@@ -158,6 +158,7 @@ impl App {
                             d.status = s;
                         }
                     }
+                    self.retry_failed(id);
                 }
             }
         }
@@ -176,7 +177,9 @@ impl App {
         if self.ticked.elapsed() < Duration::from_millis(500) {
             return;
         }
+        let elapsed = self.ticked.elapsed().as_secs_f64();
         self.ticked = Instant::now();
+        self.charge_quotas(elapsed);
         // Windows have minute resolution.
         if self.scheduled.elapsed() >= Duration::from_secs(15) {
             self.scheduled = Instant::now();

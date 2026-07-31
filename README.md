@@ -65,11 +65,30 @@ shows the rest. Settings are one panel, opened with `s`.
 | `gj` `gk` | next / previous queue |
 | `g>` `g<` | move this queue in the tab order |
 | `gp` `gP` | pause / resume this queue / every queue |
-| `gt` | daily schedule for this queue |
+| `gt` | schedule for this queue |
 | `g+` `g-` | slots for this queue |
 | `ir` `iR` | remove / remove with its file |
 | `io` `if` | open / open containing folder |
 | `iF` | force restart (torrents) |
+
+### Queue schedules
+
+`gt` takes one line, in any order:
+
+```
+22:00-06:00 mon-fri on=2026-08-01 once sync=6h retry=3 quota=150MB/4h shutdown after=<command>
+```
+
+A window wraps past midnight. `mon-fri` and `sat,sun` limit it to weekdays,
+`on=` to a single date. `once` runs the queue through and then drops the
+schedule, `sync=` puts everything finished back in the queue that often, and
+`retry=` is how many times a failure is tried again. `quota=` parks the queue
+once it has moved that much in a period, until the next one starts. When the
+queue drains, `after=` runs a command (it takes the rest of the line, so put
+it last) and `shutdown` halts the machine. Empty clears the lot.
+
+Quota use is the reported speed integrated over time, so it is a few percent
+out; sync and quota periods count from launch, not from the wall clock.
 
 Pausing sends `SIGSTOP` to the backend process: connections and the partial
 file stay put, and the freed slot goes to whatever is queued behind it. `p`
@@ -153,7 +172,7 @@ always starts clear.
 # ~/.config/muxget/state
 dir = /home/you/Downloads
 queue = default|3||0
-queue = media|7|22:00-06:00|1
+queue = media|7|22:00-06:00 mon-fri retry=3|1
 download = 0|done|100|https://example.com/linux.iso
 download = 1|queued|12.5|https://youtube.com/watch?v=abc
 ```

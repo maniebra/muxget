@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use crate::controllers::app::App;
 use crate::models::download::Status;
 use crate::models::queue::{self, Queue};
@@ -121,35 +123,130 @@ impl App {
         }
     }
 
-    /// Set the queue's daily window; an empty or malformed value clears it.
+    /// Set the queue's schedule from a typed spec; empty clears it.
     pub fn set_schedule(&mut self, at: usize, text: &str) {
         let Some(queue) = self.queues.get_mut(at) else { return };
-        queue.schedule = queue::parse_window(text);
-        self.message = match self.queues[at].schedule {
-            Some(_) => format!("{} runs {}", self.queues[at].name, self.queues[at].window()),
-            None if text.trim().is_empty() => format!("{} schedule cleared", self.queues[at].name),
-            None => "schedule must look like 22:00-06:00".into(),
+        let ok = queue.set_spec(text);
+        self.message = match (ok, text.trim().is_empty()) {
+            (_, true) => format!("{} schedule cleared", self.queues[at].name),
+            (true, _) => format!("{} runs {}", self.queues[at].name, self.queues[at].window()),
+            (false, _) => "e.g. 22:00-06:00 mon-fri retry=3 quota=150MB/4h".into(),
         };
         self.save_state();
         self.apply_schedules();
     }
 
-    /// Pause scheduled queues outside their window, resume them inside it.
-    /// A queue without a window is never touched, so hand pauses survive.
+    /// The upkeep pass, run every few seconds: window and quota pauses,
+    /// periodic re-sync, and the actions a drained queue triggers. A queue
+    /// with no schedule at all is never paused here, so hand pauses survive.
     pub fn apply_schedules(&mut self) {
-        if !self.queues.iter().any(|q| q.schedule.is_some()) {
+        let now = queue::now();
+        for at in 0..self.queues.len() {
+            self.roll_quota(at);
+            self.sync_queue(at);
+            if let Some(now) = &now {
+                let q = &self.queues[at];
+                if q.scheduled() {
+                    let paused = !q.open_now(now);
+                    if paused != q.paused {
+                        self.set_queue_paused(at, paused);
+                    }
+                }
+            }
+            self.on_drained(at);
+        }
+    }
+
+    /// Start a new quota period once the old one is up, which un-pauses a
+    /// queue that spent its allowance.
+    fn roll_quota(&mut self, at: usize) {
+        let q = &mut self.queues[at];
+        let Some((_, minutes)) = q.quota else { return };
+        if q.since.elapsed() < Duration::from_secs(minutes as u64 * 60) {
             return;
         }
-        let Some(now) = queue::now_minutes() else { return };
+        q.since = Instant::now();
+        q.used = 0;
+    }
+
+    /// Charge a queue for what it has moved since the last tick. Reported
+    /// speed integrated over the tick, so the count drifts a few percent.
+    // ponytail: speed × elapsed, exact byte counters if a quota needs to be tight.
+    pub fn charge_quotas(&mut self, secs: f64) {
         for at in 0..self.queues.len() {
-            let q = &self.queues[at];
-            if q.schedule.is_none() {
+            if self.queues[at].quota.is_none() {
                 continue;
             }
-            let paused = !q.open_at(now);
-            if paused != q.paused {
-                self.set_queue_paused(at, paused);
+            let moved = self.speed_in(self.queues[at].id) * secs;
+            self.queues[at].used += moved as u64;
+        }
+    }
+
+    /// Periodic synchronisation: requeue everything finished, so the queue
+    /// re-fetches it. The interval is wall time since the app started.
+    fn sync_queue(&mut self, at: usize) {
+        let q = &self.queues[at];
+        let Some(minutes) = q.sync else { return };
+        if q.synced.elapsed() < Duration::from_secs(minutes as u64 * 60) {
+            return;
+        }
+        self.queues[at].synced = Instant::now();
+        let id = self.queues[at].id;
+        let mut found = 0;
+        for d in self.downloads.iter_mut().filter(|d| d.queue == id) {
+            if matches!(d.status, Status::Done | Status::Failed(_) | Status::Cancelled) {
+                d.status = Status::Queued;
+                d.tries = 0;
+                found += 1;
             }
+        }
+        if found > 0 {
+            self.message = format!("{}: re-syncing {found} downloads", self.queues[at].name);
+            self.pump();
+        }
+    }
+
+    /// What a queue does once nothing in it is left to run: the `after`
+    /// command, the shutdown, the `once` teardown. Each fires once per drain.
+    fn on_drained(&mut self, at: usize) {
+        let q = &self.queues[at];
+        if !(q.once || q.shutdown || !q.after.is_empty()) {
+            return;
+        }
+        let id = q.id;
+        let busy = self.downloads.iter().any(|d| {
+            d.queue == id && matches!(d.status, Status::Running | Status::Queued | Status::Paused)
+        });
+        // Nothing to do until it has actually had work and finished it.
+        let worked = self.downloads.iter().any(|d| d.queue == id);
+        if busy || !worked {
+            self.queues[at].fired = false;
+            return;
+        }
+        if std::mem::replace(&mut self.queues[at].fired, true) {
+            return;
+        }
+
+        let q = &self.queues[at];
+        let (name, after, shutdown, once) =
+            (q.name.clone(), q.after.clone(), q.shutdown, q.once);
+        if !after.is_empty() {
+            self.message = match std::process::Command::new("sh").arg("-c").arg(&after).spawn() {
+                Ok(_) => format!("{name} finished, ran {after}"),
+                Err(e) => format!("{name}: could not run {after}: {e}"),
+            };
+        }
+        if once {
+            // A one-shot run is over; drop the schedule so a restart or the
+            // next midnight does not start it again.
+            self.queues[at].set_spec("");
+            self.set_queue_paused(at, true);
+            self.message = format!("{name} finished its one-time run");
+            self.save_state();
+        }
+        if shutdown {
+            self.message = format!("{name} finished, shutting down");
+            let _ = std::process::Command::new("shutdown").arg("-h").arg("now").spawn();
         }
     }
 

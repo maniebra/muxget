@@ -86,7 +86,8 @@ impl State {
                     // Older files have no id; there the order was the id.
                     let id = id.trim().parse().unwrap_or(state.queues.len());
                     let mut q = Queue::new(id, name.trim(), slots.trim().parse().unwrap_or(3));
-                    q.schedule = queue::parse_window(window);
+                    // Also reads files that stored a bare `HH:MM-HH:MM`.
+                    queue::parse_spec(window.trim(), &mut q);
                     state.queues.push(q);
                 }
                 "download" => {

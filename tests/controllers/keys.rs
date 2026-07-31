@@ -22,6 +22,7 @@ fn app_with(statuses: &[Status]) -> App {
             over: Default::default(),
         path: None,
         pid: None,
+        tries: 0,
         })
         .collect();
     app

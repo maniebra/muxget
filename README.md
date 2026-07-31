@@ -4,21 +4,14 @@ A terminal download manager that drives `aria2c`, `yt-dlp` and `wget` for you.
 
 Paste a url — muxget picks the right backend, queues it, and shows live
 progress. Direct files, torrents and magnets go to aria2c; everything else goes
-to yt-dlp, and playlists expand into one row per video.
+to yt-dlp, and playlists expand into one row per video. Point it at a page
+instead and it crawls for links, or mirrors the whole site for offline use.
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│ muxget │ default │ 2/3 running │ 4 queued │ 7.4MiB/s │ ~/Downloads   │
-├──────────┬───────────────────────────────────┬───────────────────────┤
-│ queues   │ default — all (6)                 │ details               │
-│ ▸default │ ▶ linux.iso    ███████░░░  71% …  │ name    linux.iso     │
-│  media   │ ✓ song.webm    ██████████ 100% …  │ status  running       │
-│          │ · talk.mkv     ░░░░░░░░░░   0% …  │ speed   5.0MiB/s      │
-│ filter   ├───────────────────────────────────┤ url     https://…     │
-│ ▸all   6 │ throughput  7.4MiB/s              ├───────────────────────┤
-│  active3 │    ▂▃▅▆█▇▅▃▂▄▆█                   │ ████████████ 71.0%    │
-└──────────┴───────────────────────────────────┴───────────────────────┘
-```
+Queues have their own slots, schedules, bandwidth quotas and retry limits, and
+the whole list — pauses included — comes back where you left it.
+
+![muxget running three downloads](assets/shot1.png)
+
 
 ## Requirements
 
@@ -40,6 +33,16 @@ muxget -d ~/Downloads -j 5 <url>...     # directory and concurrent slots
 muxget --theme nord                     # theme for this run
 ```
 
+| flag | means |
+|---|---|
+| `-d <dir>` | download directory for this run; otherwise the saved one, otherwise `$PWD` |
+| `-j <n>` | slots for the default queue this run, 1-16 |
+| `--theme <name>` | theme for this run; `MUXGET_THEME` does the same |
+| `<url>...` | queued on startup, routed by the same rules as `a` |
+
+Nothing on the command line is persisted — `-d`, `-j` and `--theme` override
+the saved values for that run only.
+
 ## Keys
 
 | key | action |
@@ -56,10 +59,37 @@ muxget --theme nord                     # theme for this run
 | `s` | settings |
 | `Tab` | cycle filter: all / active / done / failed |
 | `[` `]` | switch queue |
-| `q` | quit |
+| `q` or `ZZ` | quit |
+
+The mouse works too: click a queue, a filter or a row to select it, and scroll
+over the queue list or the table to move through them. A dialog or the settings
+panel owns the keyboard while it is open, and the mouse with it.
 
 Queue and item commands are two-key sequences; press the prefix and a menu
 shows the rest. Settings are one panel, opened with `s`.
+
+## Adding a download
+
+`a` opens a form. Only the url is required; everything else overrides what
+would otherwise be decided for you, for that download alone.
+
+| field | means |
+|---|---|
+| url | what to fetch; a page yt-dlp knows is expanded into one row per video |
+| range | `1-10` with `%d` or `%03d` in the url adds the whole numbered series, up to 500 rows |
+| directory | where this one lands, instead of the download directory |
+| file name | what to call it; with a range, `%d` is filled in per item |
+| rate limit | e.g. `2M`, for this download only |
+| user / password | sent through a private file, never on the command line |
+
+The backend is picked from the url: direct files, torrents and magnets go to
+aria2c, anything else to yt-dlp, and `wget` handles crawls. A routing rule can
+name one instead.
+
+**Passwords are never written to disk.** They live in a `0600` file for as long
+as the download runs, are deleted when it ends, and the state file has no field
+for them — a download restored from an earlier run needs its password typed
+again.
 
 ## Crawling a page
 
@@ -107,7 +137,14 @@ Crawl-wide wget settings — user agent, rate limit, `robots.txt`, extra headers
 | `io` `if` | open / open containing folder |
 | `iF` | force restart (torrents) |
 
-### Queue schedules
+## Queues
+
+Every download belongs to a queue, and each queue runs its own slots — a busy
+lane never blocks another. New downloads land in the queue you are viewing.
+Deleting a queue moves its downloads to the default one rather than dropping
+them; the default queue itself cannot be deleted.
+
+### Schedules
 
 `gt` takes one line, in any order:
 
@@ -126,6 +163,8 @@ it last) and `shutdown` halts the machine. Empty clears the lot.
 Quota use is the reported speed integrated over time, so it is a few percent
 out; sync and quota periods count from launch, not from the wall clock.
 
+### Pausing
+
 Pausing sends `SIGSTOP` to the backend process: connections and the partial
 file stay put, and the freed slot goes to whatever is queued behind it. `p`
 again sends `SIGCONT`. Over a long pause a server may drop the socket anyway —
@@ -134,13 +173,6 @@ both backends retry and resume from where the file left off.
 `gp` pauses the whole queue and `P` pauses every queue: running downloads
 freeze and, unlike a single pause, nothing queued behind them starts. `P` on a
 half-paused app resumes everything, so one key always reaches a known state.
-
-## Queues
-
-Every download belongs to a queue, and each queue runs its own slots — a busy
-lane never blocks another. New downloads land in the queue you are viewing.
-Deleting a queue moves its downloads to the default one rather than dropping
-them; the default queue itself cannot be deleted.
 
 ## Routing rules
 
@@ -178,12 +210,13 @@ applied once the backend reports a total and the download moves queue then.
 within one, `Esc` closes.
 
 - **general** — theme, download directory, nerd font icons.
-- **backends** — a form over the common aria2c and yt-dlp options: `Enter`
-  toggles a switch or edits a value, `b` switches backend, `x` unsets one.
+- **backends** — a form over the common aria2c, yt-dlp and wget options:
+  `Enter` toggles a switch or edits a value, `b` switches backend, `x` unsets
+  one.
 - **categories** — the routing rules as they will be applied.
 
-Everything is stored as plain flags in `~/.config/muxget/aria2c.args` and
-`yt-dlp.args`, passed to the tool verbatim and appended last, so they override
+Everything is stored as plain flags in `~/.config/muxget/aria2c.args`,
+`yt-dlp.args` and `wget.args`, passed to the tool verbatim and appended last, so they override
 muxget's own defaults. Flags the panel has no entry for are kept untouched, so
 hand-editing those files works alongside the UI:
 
@@ -195,9 +228,9 @@ hand-editing those files works alongside the UI:
 
 ## What persists
 
-Your download list, queues (names and slot counts), download directory and
-theme are saved to `~/.config/muxget/` as you change them — there is no save
-step. `-d` and `--theme` override the saved values for that run only.
+Your download list, your queues — names, slots, schedules and pauses — the
+download directory and the theme are saved to `~/.config/muxget/` as you change
+them. There is no save step.
 
 Next launch picks the list back up where it left off: finished, failed and
 cancelled rows return as history, paused rows and paused queues come back
@@ -214,7 +247,15 @@ queue = default|3||0|
 queue = media|7|22:00-06:00 mon-fri retry=3|1|paused
 download = 0|done|100|https://example.com/linux.iso
 download = 1|queued|12.5|https://youtube.com/watch?v=abc
+over = /tmp/here||2M||wget|--recursive --level=2
+tries = 1
 ```
+
+`queue` is `name|slots|schedule|id|paused`, `download` is
+`queue|status|percent|url`, and the optional `over`, `pid` and `tries` lines
+attach to the download above them. The url is the last unsplit field, so one
+containing a `|` survives. A line that does not parse is skipped rather than
+losing the file.
 
 ## Themes
 
@@ -241,14 +282,20 @@ Implement `Backend` in `src/models/` — a name, which urls it accepts, the
 command to run, and a progress-line parser — then add it to `backends()` in
 `src/models/mod.rs`. Spawning, output reading and progress reporting are shared.
 
+Four optional hooks: `reason` turns an exit code into something a person can
+read, `tolerates` marks an exit code that is not really a failure, `notice`
+turns a line into a status message, and `config_flag`/`credentials` say how the
+tool reads a login from a file. Add an `OptSpec` list in `src/models/option.rs`
+and the settings panel gets a form for it.
+
 ## Layout
 
 ```
 src/
-  models/       downloads, queues, backends, option specs
+  models/       downloads, queues, crawls, backends, option specs, state file
   views/        table, sidebars, dialogs, options panel, themes
-  controllers/  state, event loop, keys, queue and settings actions
-  utils/        progress parsing, argument files
+  controllers/  state, event loop, keys, queue, crawl and settings actions
+  utils/        progress parsing, argument files, credential files
   main.rs
 tests/          mirrors src/
 ```

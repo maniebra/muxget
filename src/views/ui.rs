@@ -6,7 +6,8 @@ use ratatui::widgets::{
 };
 use ratatui::Frame;
 
-use crate::controllers::app::{App, Filter};
+use crate::controllers::app::App;
+use crate::controllers::downloads::Filter;
 use crate::models::download::{Download, Status};
 use crate::utils::parse::human;
 use crate::views::theme::Theme;

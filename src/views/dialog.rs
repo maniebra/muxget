@@ -4,7 +4,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::controllers::app::{menu_for, App, Dialog};
+use crate::controllers::app::App;
+use crate::controllers::keys::{menu_for, Dialog};
 use crate::views::theme::Theme;
 
 /// Centered popover, at most `w` x `h` but never wider than the terminal.

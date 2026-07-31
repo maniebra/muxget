@@ -32,8 +32,20 @@ name = "models_ytdlp"
 path = "tests/models/ytdlp.rs"
 
 [[test]]
-name = "controllers_app"
-path = "tests/controllers/app.rs"
+name = "controllers_downloads"
+path = "tests/controllers/downloads.rs"
+
+[[test]]
+name = "controllers_queues"
+path = "tests/controllers/queues.rs"
+
+[[test]]
+name = "controllers_keys"
+path = "tests/controllers/keys.rs"
+
+[[test]]
+name = "controllers_settings"
+path = "tests/controllers/settings.rs"
 
 [[test]]
 name = "controllers_options"

@@ -49,6 +49,8 @@ impl App {
     /// `dir` is the effective download directory: the `-d` flag if given,
     /// else the saved one, else the working directory (resolved in `main`).
     pub fn new(dir: PathBuf) -> Self {
+        // Nothing is running yet, so any leftover credentials file is stale.
+        crate::utils::clear_all_creds();
         let state = State::load();
         let mut app = App::with_queues(dir, state.queues_or_default());
         app.nerd = state.nerd;
@@ -110,6 +112,7 @@ impl App {
         for d in &mut self.downloads {
             d.kill();
         }
+        crate::utils::clear_all_creds();
         Ok(())
     }
 
@@ -123,8 +126,7 @@ impl App {
                     }
                 }
                 Update::Located(id, path) => {
-                    // yt-dlp may print a path relative to where it was told to
-                    // work; anchor it so the actions get a usable file.
+                    // yt-dlp may report a relative path.
                     let dir = self.dir.clone();
                     if let Some(d) = self.find(id) {
                         d.path = Some(dir.join(path));
@@ -158,7 +160,7 @@ impl App {
             return;
         }
         self.ticked = Instant::now();
-        // Windows have minute resolution; no need to ask the clock every frame.
+        // Windows have minute resolution.
         if self.scheduled.elapsed() >= Duration::from_secs(15) {
             self.scheduled = Instant::now();
             self.apply_schedules();

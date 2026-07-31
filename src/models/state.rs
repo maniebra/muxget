@@ -16,8 +16,7 @@ pub struct State {
 }
 
 /// A download as it survives a restart: where it belongs, how it ended, how
-/// far it got, and what to fetch. Percent is saved so a restored row shows
-/// where it stood instead of 0 until the backend reports again.
+/// far it got, and what to fetch.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedDownload {
     pub queue: usize,
@@ -59,8 +58,8 @@ impl State {
 
     /// `dir = <path>`, `queue = <name>|<slots>|<window>`,
     /// `download = <queue>|<status>|<percent>|<url>`, optionally followed by
-    /// `over = <dir>|<name>|<rate>` for the download above it — its own line,
-    /// so a url with a `|` in it stays the last unsplit field.
+    /// `over = <dir>|<name>|<rate>|<user>` for the download above it — its
+    /// own line, so a url containing `|` stays the last unsplit field.
     /// A malformed line is skipped rather than losing the whole file.
     pub fn parse(text: &str) -> State {
         let mut state = State::default();
@@ -77,7 +76,7 @@ impl State {
                     if name.trim().is_empty() {
                         continue;
                     }
-                    // The window is optional, so files written before it exist.
+                    // Optional: files written before schedules existed.
                     let (slots, window) = rest.split_once('|').unwrap_or((rest, ""));
                     // Ids are positional: the first queue is always the default.
                     let id = state.queues.len();
@@ -93,8 +92,7 @@ impl State {
                     let Some((status, rest)) = rest.split_once('|') else {
                         continue;
                     };
-                    // Percent is optional: files written before it existed go
-                    // straight to the url, which never parses as a number.
+                    // Optional too; a url never parses as a number.
                     let (percent, url) = match rest.split_once('|') {
                         Some((p, u)) => match p.trim().parse::<f32>() {
                             Ok(p) => (p, u),
@@ -113,14 +111,17 @@ impl State {
                         over: Overrides::default(),
                     });
                 }
-                // Attaches to the download above it; a stray one is ignored.
+                // Attaches to the download above it.
                 "over" => {
                     let Some(last) = state.downloads.last_mut() else { continue };
-                    let mut parts = value.splitn(3, '|');
+                    let mut parts = value.splitn(4, '|');
                     last.over = Overrides {
                         dir: parts.next().unwrap_or_default().trim().to_string(),
                         name: parts.next().unwrap_or_default().trim().to_string(),
                         rate: parts.next().unwrap_or_default().trim().to_string(),
+                        user: parts.next().unwrap_or_default().trim().to_string(),
+                        // Never stored.
+                        pass: String::new(),
                     };
                 }
                 _ => {}
@@ -144,8 +145,8 @@ impl State {
             ));
             if !d.over.is_empty() {
                 text.push_str(&format!(
-                    "over = {}|{}|{}\n",
-                    d.over.dir, d.over.name, d.over.rate
+                    "over = {}|{}|{}|{}\n",
+                    d.over.dir, d.over.name, d.over.rate, d.over.user
                 ));
             }
         }

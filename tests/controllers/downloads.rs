@@ -204,10 +204,10 @@ fn remove_with_data_deletes_the_file_and_its_sidecar() {
     app.delete_with_data(0);
 
     assert!(app.downloads.is_empty());
-    assert!(!file.exists(), "the file is gone");
-    assert!(!file.with_extension("aria2").exists(), "so is the sidecar");
+    assert!(!file.exists());
+    assert!(!file.with_extension("aria2").exists(), "the sidecar too");
 
-    // A row that never wrote anything still removes cleanly.
+    // A row that never wrote anything still removes.
     let mut app = app_with(&[Status::Queued]);
     app.delete_with_data(0);
     assert!(app.downloads.is_empty());

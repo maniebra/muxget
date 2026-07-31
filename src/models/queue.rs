@@ -26,8 +26,8 @@ impl Queue {
         }
     }
 
-    /// True when `now` (local minutes-of-day) falls in the window. A window
-    /// whose end is not after its start wraps past midnight (`22:00-06:00`).
+    /// True when `now` (local minutes-of-day) is in the window. One whose end
+    /// is not after its start wraps past midnight (`22:00-06:00`).
     pub fn open_at(&self, now: u16) -> bool {
         match self.schedule {
             None => true,
@@ -58,12 +58,12 @@ pub fn parse_window(text: &str) -> Option<(u16, u16)> {
         (h < 24 && m < 60).then_some(h * 60 + m)
     };
     let (start, end) = (at(start)?, at(end)?);
-    // An empty window would pause the queue forever — treat it as no window.
+    // An empty window would pause the queue forever.
     (start != end).then_some((start, end))
 }
 
-/// Local minutes-of-day. `date(1)` rather than a time crate for one number;
-/// `None` if it cannot be read, which leaves every schedule open.
+/// Local minutes-of-day, via `date(1)` rather than a time crate. `None`
+/// leaves every schedule open.
 pub fn now_minutes() -> Option<u16> {
     let out = std::process::Command::new("date").arg("+%H:%M").output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);

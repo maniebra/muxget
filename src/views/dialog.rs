@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Clear, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::controllers::app::App;
-use crate::controllers::keys::{menu_for, Dialog, Form, FORM_LABELS};
+use crate::controllers::keys::{menu_for, Dialog, Form, FORM_LABELS, SECRET_FIELDS};
 use crate::views::theme::Theme;
 
 /// Centered popover, at most `w` x `h` but never wider than the terminal.
@@ -109,7 +109,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         ),
     };
 
-    // The add form is taller: five fields plus the preview under them.
+    // The add form is taller: its fields plus the preview.
     let area = centered(f.area(), 76, if matches!(dialog, Dialog::Add(_)) { 16 } else { 9 });
     // Clear so the list underneath does not bleed through the popover.
     f.render_widget(Clear, area);
@@ -182,8 +182,7 @@ fn field<'a>(t: &Theme, buf: &str) -> Vec<Line<'a>> {
     named(t, "url", buf)
 }
 
-/// One line per field; only the focused one shows a caret. The three override
-/// fields say what leaving them empty means, so the form documents itself.
+/// One line per field; only the focused one shows a caret.
 fn form_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
     let hints = [
         "",
@@ -191,13 +190,21 @@ fn form_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
         "the download directory",
         "the backend's choice",
         "no limit",
+        "no login",
+        "no login",
     ];
     let mut lines: Vec<Line> = FORM_LABELS
         .iter()
         .enumerate()
         .map(|(i, label)| {
             let on = i == form.cursor;
-            let value = &form.fields[i];
+            // A password is never drawn, not even for the person typing it.
+            let shown_value = if SECRET_FIELDS[i] {
+                "•".repeat(form.fields[i].chars().count())
+            } else {
+                form.fields[i].clone()
+            };
+            let value = &shown_value;
             let shown = match (on, value.is_empty()) {
                 (true, _) => format!("{value}▏"),
                 (false, true) => format!("— {}", hints[i]),
@@ -222,8 +229,7 @@ fn form_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
     lines
 }
 
-/// What the form would actually add. Shows the first two and the last url so
-/// a wrong pattern is obvious before anything is queued.
+/// What the form would actually add, so a wrong pattern shows up first.
 fn preview<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
     let urls = form.urls();
     if urls.iter().all(|u| u.is_empty()) {
@@ -238,7 +244,7 @@ fn preview<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
         },
         Style::default().fg(t.muted),
     )];
-    // The middle is elided; the ends are what show a bad pattern.
+    // The ends are what show a bad pattern.
     let shown: Vec<usize> = if count <= 3 {
         (0..count).collect()
     } else {

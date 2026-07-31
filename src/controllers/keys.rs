@@ -6,16 +6,25 @@ use crate::controllers::options::Options;
 use crate::models::download::Overrides;
 use crate::utils;
 
-/// The add dialog's fields, in display order. The url is required; the rest
-/// are per-download overrides and stay empty unless typed into.
-pub const FORM_LABELS: [&str; 5] =
-    ["url", "range", "directory", "file name", "rate limit"];
+/// The add dialog's fields, in display order.
+pub const FORM_LABELS: [&str; 7] = [
+    "url",
+    "range",
+    "directory",
+    "file name",
+    "rate limit",
+    "user",
+    "password",
+];
 
-/// A url plus the settings that will apply to that download alone.
+/// Fields shown as dots rather than text.
+pub const SECRET_FIELDS: [bool; 7] = [false, false, false, false, false, false, true];
+
+/// A url plus the settings for that download alone.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Form {
-    pub fields: [String; 5],
-    /// Which field the keyboard is typing into.
+    pub fields: [String; 7],
+    /// Field being typed into.
     pub cursor: usize,
 }
 
@@ -25,11 +34,13 @@ impl Form {
             dir: self.fields[2].trim().to_string(),
             name: self.fields[3].trim().to_string(),
             rate: self.fields[4].trim().to_string(),
+            user: self.fields[5].trim().to_string(),
+            // Not trimmed: a password's spaces are part of it.
+            pass: self.fields[6].clone(),
         }
     }
 
-    /// Every url this form will add: one per number in the range, or just the
-    /// url when there is no range.
+    /// Every url this form will add: one per number in the range.
     pub fn urls(&self) -> Vec<String> {
         utils::expand(self.fields[0].trim(), &self.fields[1])
     }
@@ -38,7 +49,7 @@ impl Form {
 /// Modal state. `Some` means the popover is up and owns the keyboard.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dialog {
-    /// New download being filled in: url plus its own settings.
+    /// New download being filled in.
     Add(Form),
     /// Editing the url of the download at this index; edit restarts it.
     Edit(usize, String),
@@ -79,7 +90,7 @@ pub const QUEUE_MENU: &[MenuItem] = &[
     MenuItem { key: '-', label: "one less slot" },
 ];
 
-/// Item commands, reached with the `i` prefix and acting on the selected row.
+/// Commands for the selected row, reached with the `i` prefix.
 pub const ITEM_MENU: &[MenuItem] = &[
     MenuItem { key: 'r', label: "remove" },
     MenuItem { key: 'R', label: "remove and delete the file" },
@@ -162,8 +173,7 @@ impl App {
                 KeyCode::Enter => {
                     let (over, range) = (form.overrides(), form.fields[1].clone());
                     for (i, url) in form.urls().iter().enumerate() {
-                        // The name override gets the same number as its url,
-                        // or every item in the range would fight for one file.
+                        // Or every item in the range writes to one file.
                         let mut over = over.clone();
                         if let Some((from, _)) = utils::parse_range(&range) {
                             over.name = utils::fill(&over.name, from + i as i64);

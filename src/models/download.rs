@@ -5,16 +5,17 @@ pub struct Progress {
     pub eta: String,
 }
 
-/// Per-download tweaks typed in the add form. An empty field means "use the
-/// app-wide setting"; each backend maps the rest to its own flags.
+/// Per-download settings from the add form. Empty means "use the app-wide
+/// setting"; each backend maps the rest to its own flags.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Overrides {
-    /// Download directory for this item only.
     pub dir: String,
-    /// Output file name for this item only.
     pub name: String,
     /// Speed cap, in whatever the backend accepts (`2M`, `500K`).
     pub rate: String,
+    /// The password is never persisted and never reaches a command line.
+    pub user: String,
+    pub pass: String,
 }
 
 impl Overrides {
@@ -43,12 +44,10 @@ pub struct Download {
     pub queue: usize,
     pub url: String,
     pub backend: &'static str,
-    /// Settings that apply to this download alone.
     pub over: Overrides,
     pub status: Status,
     pub progress: Progress,
-    /// Where the file landed, once a backend names it. Not persisted — a
-    /// restarted transfer names it again.
+    /// Where the file landed, once a backend names it. Not persisted.
     pub path: Option<std::path::PathBuf>,
     pub child: Option<std::sync::Arc<std::sync::Mutex<std::process::Child>>>,
 }

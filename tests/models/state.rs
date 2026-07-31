@@ -110,6 +110,8 @@ fn per_item_settings_round_trip_and_stay_optional() {
         dir: "/tmp/here".into(),
         name: "mine.iso".into(),
         rate: "2M".into(),
+        user: "me".into(),
+        pass: "hunter2".into(),
     };
     let plain = row(0, Status::Done, "https://example.com/b.iso");
     let back = State::parse(&State::render(
@@ -121,6 +123,8 @@ fn per_item_settings_round_trip_and_stay_optional() {
 
     assert_eq!(back.downloads[0].over.dir, "/tmp/here");
     assert_eq!(back.downloads[0].over.rate, "2M");
+    assert_eq!(back.downloads[0].over.user, "me");
+    assert_eq!(back.downloads[0].over.pass, "", "a password is never stored");
     assert!(back.downloads[1].over.is_empty(), "no line written when unset");
 
     // A stray `over` with no download above it is ignored, not a panic.

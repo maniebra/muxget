@@ -121,8 +121,7 @@ impl App {
         }
     }
 
-    /// Give the current queue a daily active window, or clear it with an
-    /// empty (or unparseable) value.
+    /// Set the queue's daily window; an empty or malformed value clears it.
     pub fn set_schedule(&mut self, at: usize, text: &str) {
         let Some(queue) = self.queues.get_mut(at) else { return };
         queue.schedule = queue::parse_window(text);
@@ -135,9 +134,8 @@ impl App {
         self.apply_schedules();
     }
 
-    /// Pause queues outside their window and resume them inside it. Manual
-    /// pauses of an unscheduled queue are left alone — only a queue with a
-    /// window is driven by the clock.
+    /// Pause scheduled queues outside their window, resume them inside it.
+    /// A queue without a window is never touched, so hand pauses survive.
     pub fn apply_schedules(&mut self) {
         if !self.queues.iter().any(|q| q.schedule.is_some()) {
             return;

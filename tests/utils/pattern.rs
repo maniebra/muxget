@@ -27,7 +27,7 @@ fn only_the_number_specs_are_substituted() {
     assert_eq!(fill("a%db", 7), "a7b");
     assert_eq!(fill("a%04db", 7), "a0007b");
     assert_eq!(fill("100%% sure", 7), "100% sure");
-    // An unknown spec is left as typed rather than guessed at.
+    // An unknown spec is left as typed.
     assert_eq!(fill("a%sb", 7), "a%sb");
     assert_eq!(fill("no specs", 7), "no specs");
 }
@@ -38,4 +38,20 @@ fn ranges_are_inclusive_and_non_negative() {
     assert_eq!(parse_range("0-0"), Some((0, 0)));
     assert_eq!(parse_range("-1-5"), None);
     assert_eq!(parse_range("5"), None);
+}
+
+#[test]
+fn a_credentials_file_is_owner_only_and_removable() {
+    use muxget::utils::{clear_creds, write_creds};
+
+    let path = write_creds(4242, "http-user=me\n").expect("written");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "http-user=me\n");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+    clear_creds(4242);
+    assert!(!path.exists());
 }

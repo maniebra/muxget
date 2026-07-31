@@ -159,7 +159,7 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
                     if on { "▸" } else { " " },
                     truncate(&q.name, 9),
                     match (q.paused, q.schedule) {
-                        // A scheduled queue shows its window; it explains the pause.
+                        // A window explains the pause it causes.
                         (_, Some(_)) => q.window(),
                         (true, None) => "paused".to_string(),
                         (false, None) => format!("{}/{}", app.active_in(q.id), q.max_active),
@@ -325,7 +325,12 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
             ),
             field("speed", d.progress.speed.clone(), t.accent),
             field("eta", d.progress.eta.clone(), t.accent),
-            Line::default(),
+            if d.over.user.is_empty() {
+                Line::default()
+            } else {
+                // The user name only; never the password.
+                field("login", d.over.user.clone(), t.muted)
+            },
             Line::styled("url", Style::default().fg(t.muted).bg(t.panel)),
             Line::styled(d.url.clone(), Style::default().fg(t.fg).bg(t.panel)),
         ])
@@ -375,10 +380,9 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-/// What to call this download: the file a backend actually wrote, then the
-/// name the user asked for, then the url's own. A url whose path ends in a
-/// route rather than a file (`/watch`) carries its identity in the query, so
-/// keep the query instead of calling every video "watch".
+/// What to call this download: the file a backend wrote, the name the user
+/// asked for, then the url's. A url ending in a route rather than a file
+/// (`/watch`) keeps its query, or every video would be called "watch".
 pub fn name_of(d: &Download) -> String {
     if let Some(name) = d.path.as_ref().and_then(|p| p.file_name()) {
         return name.to_string_lossy().into_owned();
@@ -398,8 +402,8 @@ pub fn name_of(d: &Download) -> String {
     }
 }
 
-/// Status glyph. Nerd font codepoints only when the user says their font has
-/// them — the fallback box is worse than the plain unicode it replaces.
+/// Status glyph. Nerd font codepoints only if the user opted in; the fallback
+/// box is worse than the plain unicode it replaces.
 pub fn status_icon(status: &Status, nerd: bool) -> &'static str {
     match status {
         Status::Queued => if nerd { "\u{f017}" } else { "·" },

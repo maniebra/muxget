@@ -174,7 +174,7 @@ fn a_pattern_and_range_add_one_download_per_number() {
     typed(&mut app, "1-3");
     app.on_key(Tab);
     app.on_key(Tab);
-    typed(&mut app, "local%d.iso"); // the name follows the same number
+    typed(&mut app, "local%d.iso");
     app.on_key(KeyCode::Enter);
 
     let urls: Vec<&str> = app.downloads.iter().map(|d| d.url.as_str()).collect();

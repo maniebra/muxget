@@ -37,7 +37,7 @@ impl Backend for Aria2 {
             .arg("--dir")
             .arg(if over.dir.is_empty() { dir } else { Path::new(&over.dir) });
         c.args(args::load(self.name()));
-        // This item's own settings come last, beating the global flags.
+        // Last, so this item's settings beat the global flags.
         if !over.name.is_empty() {
             c.arg("--out").arg(&over.name);
         }
@@ -50,5 +50,14 @@ impl Backend for Aria2 {
 
     fn parse(&self, line: &str) -> Option<Progress> {
         parse::aria2(line)
+    }
+
+    fn config_flag(&self) -> &'static str {
+        "--conf-path"
+    }
+
+    /// aria2's config syntax: long options without the dashes.
+    fn credentials(&self, user: &str, pass: &str) -> String {
+        format!("http-user={user}\nhttp-passwd={pass}\nftp-user={user}\nftp-passwd={pass}\n")
     }
 }

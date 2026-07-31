@@ -47,8 +47,8 @@ impl App {
         self.add_with(url, Overrides::default());
     }
 
-    /// Enqueue a url with settings that apply to it alone; a playlist passes
-    /// the same settings down to every entry it expands into.
+    /// Enqueue a url with its own settings; a playlist passes them to every
+    /// entry it expands into.
     pub fn add_with(&mut self, url: &str, over: Overrides) {
         let url = url.trim();
         if url.is_empty() {
@@ -212,6 +212,7 @@ impl App {
         if let Some(d) = self.downloads.get_mut(at) {
             if matches!(d.status, Status::Running | Status::Queued | Status::Paused) {
                 d.kill();
+                crate::utils::clear_creds(d.id);
                 d.status = Status::Cancelled;
             }
         }
@@ -236,20 +237,19 @@ impl App {
             return;
         }
         self.downloads[at].kill();
+        crate::utils::clear_creds(self.downloads[at].id);
         self.downloads.remove(at);
         self.clamp_selection();
         self.save_state();
     }
 
-    /// Remove the row and delete what it downloaded. The file is only known
-    /// once a backend named it, so an untouched row just goes away.
+    /// Remove the row and delete what it downloaded, if a backend named a file.
     pub fn delete_with_data(&mut self, at: usize) {
         let Some(d) = self.downloads.get(at) else { return };
         let path = d.path.clone();
         self.delete(at);
         self.message = match path {
-            // A partial file leaves a sidecar behind; both tools use `.part`
-            // or `.aria2`, and neither is worth keeping without its file.
+            // Partial transfers leave a sidecar next to the file.
             Some(p) => match std::fs::remove_file(&p) {
                 Ok(()) => {
                     for ext in ["part", "aria2"] {
@@ -263,8 +263,7 @@ impl App {
         };
     }
 
-    /// Hand the file to the desktop. Without a known file, open the download
-    /// directory instead — the folder is always a useful answer.
+    /// Hand the file to the desktop, or the download directory if unknown.
     pub fn open_item(&mut self, at: usize) {
         let target = match self.downloads.get(at).and_then(|d| d.path.clone()) {
             Some(p) => p,

@@ -34,6 +34,11 @@ pub fn list_command(url: &str) -> Command {
     c
 }
 
+/// Only what would end the quoted string or escape the next character.
+fn escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 impl Backend for YtDlp {
     fn name(&self) -> &'static str {
         "yt-dlp"
@@ -52,7 +57,7 @@ impl Backend for YtDlp {
             .arg("-P")
             .arg(if over.dir.is_empty() { dir } else { Path::new(&over.dir) });
         c.args(args::load(self.name()));
-        // This item's own settings come last, beating the global flags.
+        // Last, so this item's settings beat the global flags.
         if !over.name.is_empty() {
             c.arg("-o").arg(&over.name);
         }
@@ -65,5 +70,15 @@ impl Backend for YtDlp {
 
     fn parse(&self, line: &str) -> Option<Progress> {
         parse::ytdlp(line)
+    }
+
+    fn config_flag(&self) -> &'static str {
+        "--config-location"
+    }
+
+    /// A yt-dlp config file holds command-line flags; quotes keep a password
+    /// with spaces or `#` intact.
+    fn credentials(&self, user: &str, pass: &str) -> String {
+        format!("-u \"{}\"\n-p \"{}\"\n", escape(user), escape(pass))
     }
 }

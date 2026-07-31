@@ -93,9 +93,7 @@ pub fn for_each_line(mut r: impl Read, mut f: impl FnMut(&str)) {
     }
 }
 
-/// The output file a backend just named, from either tool's chatter. Used for
-/// open / reveal / delete-with-data; a download that never names one keeps
-/// `None` and those actions fall back to the download directory.
+/// The output file a backend just named, from either tool's chatter.
 pub fn destination(line: &str) -> Option<String> {
     let line = line.trim();
     if let Some(rest) = line.strip_prefix("[download] Destination:") {
@@ -107,8 +105,7 @@ pub fn destination(line: &str) -> Option<String> {
     if let Some(rest) = line.strip_prefix("[download] ") {
         return rest.strip_suffix(" has already been downloaded").map(str::to_string);
     }
-    // aria2c's result table: `gid|OK  |speed|path`. The header row says `stat`,
-    // so only a finished row matches.
+    // aria2c's result table: `gid|OK  |speed|path`.
     if line.contains("|OK") && line.matches('|').count() >= 3 {
         return Some(line.rsplit('|').next()?.trim().to_string());
     }

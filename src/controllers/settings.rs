@@ -13,8 +13,7 @@ impl App {
         self.message = format!("theme: {}", self.theme.name);
     }
 
-    /// Nerd font glyphs for the status column, for terminals whose font has
-    /// them; plain unicode otherwise, since the fallback is a box.
+    /// Nerd font glyphs for the status column; plain unicode otherwise.
     pub fn toggle_nerd(&mut self) {
         self.nerd = !self.nerd;
         self.save_state();

@@ -29,14 +29,14 @@ jobs:
             deb: true
             rpm: true
             appimage: true
-          - target: x86_64-apple-darwin
-            os: macos-13
           - target: aarch64-apple-darwin
             os: macos-14
           - target: x86_64-pc-windows-msvc
             os: windows-2022
+            msi: true
           - target: aarch64-pc-windows-msvc
             os: windows-2022
+            msi: true
 
     steps:
       - uses: actions/checkout@v4
@@ -47,23 +47,20 @@ jobs:
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
 
-      # muxget-v<version>-<target>.tar.gz / .zip
+      # Windows ships the bare executable; everything else a tarball.
       - name: Archive
         shell: bash
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           name="muxget-v${version}-${{ matrix.target }}"
-          # Staged outside dist/, which holds only finished packages.
-          mkdir -p "stage/$name" dist
-          case "${{ matrix.target }}" in
-            *windows*) cp "target/${{ matrix.target }}/release/muxget.exe" "stage/$name/" ;;
-            *) cp "target/${{ matrix.target }}/release/muxget" "stage/$name/" ;;
-          esac
-          cp README.md LICENSE "stage/$name/"
+          mkdir -p dist
           if [[ "${{ matrix.target }}" == *windows* ]]; then
-            (cd stage && 7z a "../dist/$name.zip" "$name" >/dev/null)
+            cp "target/${{ matrix.target }}/release/muxget.exe" "dist/$name.exe"
           else
+            # Staged outside dist/, which holds only finished packages.
+            mkdir -p "stage/$name"
+            cp "target/${{ matrix.target }}/release/muxget" README.md LICENSE "stage/$name/"
             tar czf "dist/$name.tar.gz" -C stage "$name"
           fi
 
@@ -125,6 +122,18 @@ jobs:
           # No FUSE on the runners.
           ./appimagetool --appimage-extract-and-run "$root" \
             "dist/muxget-v${version}-${arch}.AppImage"
+
+      # wix/main.wxs is committed: its UpgradeCode must stay the same across
+      # versions or an install will sit beside the old one instead of replacing it.
+      - name: MSI installer
+        if: matrix.msi
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-wix --locked
+          version="${GITHUB_REF_NAME#v}"
+          cargo wix --no-build --nocapture --target ${{ matrix.target }} \
+            -o "dist/muxget-v${version}-${{ matrix.target }}.msi"
 
       - name: Upload to the release
         shell: bash

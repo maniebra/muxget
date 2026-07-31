@@ -43,6 +43,7 @@ fn row(queue: usize, status: Status, url: &str) -> Download {
         backend: "aria2c",
         status,
         progress: Default::default(),
+        over: Default::default(),
         path: None,
         child: None,
     }
@@ -97,4 +98,29 @@ fn a_queue_window_round_trips_and_is_optional() {
     let old = State::parse("queue = default|4\n");
     assert_eq!(old.queues[0].max_active, 4);
     assert_eq!(old.queues[0].schedule, None);
+}
+
+#[test]
+fn per_item_settings_round_trip_and_stay_optional() {
+    use muxget::models::download::Overrides;
+
+    let mut d = row(0, Status::Queued, "https://example.com/a.iso");
+    d.over = Overrides {
+        dir: "/tmp/here".into(),
+        name: "mine.iso".into(),
+        rate: "2M".into(),
+    };
+    let plain = row(0, Status::Done, "https://example.com/b.iso");
+    let back = State::parse(&State::render(
+        std::path::Path::new("/tmp"),
+        &[],
+        &[d, plain],
+    ));
+
+    assert_eq!(back.downloads[0].over.dir, "/tmp/here");
+    assert_eq!(back.downloads[0].over.rate, "2M");
+    assert!(back.downloads[1].over.is_empty(), "no line written when unset");
+
+    // A stray `over` with no download above it is ignored, not a panic.
+    assert!(State::parse("over = /tmp||1M\n").downloads.is_empty());
 }

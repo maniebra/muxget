@@ -3,7 +3,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
-use crate::models::download::{Progress, Status, Update};
+use crate::models::download::{Overrides, Progress, Status, Update};
 use crate::utils::parse::{destination, for_each_line};
 
 /// A download tool. Supply a command line and a progress parser; the spawning,
@@ -14,8 +14,9 @@ pub trait Backend: Send + Sync {
     /// Does this backend want to handle `url`?
     fn accepts(&self, url: &str) -> bool;
 
-    /// Command to run. Must write progress to stdout.
-    fn command(&self, url: &str, dir: &Path) -> Command;
+    /// Command to run. Must write progress to stdout. `over` holds the
+    /// per-download tweaks, which win over the user's global flags.
+    fn command(&self, url: &str, dir: &Path, over: &Overrides) -> Command;
 
     /// One line of tool output -> progress, or None if the line says nothing.
     fn parse(&self, line: &str) -> Option<Progress>;
@@ -26,10 +27,11 @@ pub fn run(
     backend: Box<dyn Backend>,
     url: &str,
     dir: &Path,
+    over: &Overrides,
     id: usize,
     tx: Sender<Update>,
 ) -> std::io::Result<Arc<Mutex<Child>>> {
-    let mut cmd = backend.command(url, dir);
+    let mut cmd = backend.command(url, dir, over);
     let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

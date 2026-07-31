@@ -19,7 +19,8 @@ fn app_with(statuses: &[Status]) -> App {
             backend: "aria2c",
             status: s.clone(),
             progress: Default::default(),
-            path: None,
+            over: Default::default(),
+        path: None,
         child: None,
         })
         .collect();

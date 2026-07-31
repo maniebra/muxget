@@ -370,16 +370,27 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-/// Filename from the url, falling back to the url itself.
-fn name_of(d: &Download) -> String {
-    d.url
-        .split(['?', '#'])
-        .next()
-        .unwrap_or(&d.url)
-        .rsplit('/')
-        .find(|s| !s.is_empty())
-        .unwrap_or(&d.url)
-        .to_string()
+/// What to call this download: the file a backend actually wrote, then the
+/// name the user asked for, then the url's own. A url whose path ends in a
+/// route rather than a file (`/watch`) carries its identity in the query, so
+/// keep the query instead of calling every video "watch".
+pub fn name_of(d: &Download) -> String {
+    if let Some(name) = d.path.as_ref().and_then(|p| p.file_name()) {
+        return name.to_string_lossy().into_owned();
+    }
+    if !d.over.name.is_empty() {
+        return d.over.name.clone();
+    }
+    let (path, query) = match d.url.split_once('?') {
+        Some((path, query)) => (path, query.split('#').next().unwrap_or("")),
+        None => (d.url.split('#').next().unwrap_or(&d.url), ""),
+    };
+    let last = path.rsplit('/').find(|s| !s.is_empty()).unwrap_or(&d.url);
+    if query.is_empty() || last.contains('.') {
+        last.to_string()
+    } else {
+        format!("{last}?{query}")
+    }
 }
 
 fn bar(percent: f32, width: usize) -> String {

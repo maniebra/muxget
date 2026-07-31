@@ -3,12 +3,35 @@ use crossterm::event::KeyCode;
 use crate::controllers::app::App;
 use crate::controllers::downloads::Filter;
 use crate::controllers::options::Options;
+use crate::models::download::Overrides;
+
+/// The add dialog's fields, in display order. The url is required; the rest
+/// are per-download overrides and stay empty unless typed into.
+pub const FORM_LABELS: [&str; 4] = ["url", "directory", "file name", "rate limit"];
+
+/// A url plus the settings that will apply to that download alone.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Form {
+    pub fields: [String; 4],
+    /// Which field the keyboard is typing into.
+    pub cursor: usize,
+}
+
+impl Form {
+    pub fn overrides(&self) -> Overrides {
+        Overrides {
+            dir: self.fields[1].trim().to_string(),
+            name: self.fields[2].trim().to_string(),
+            rate: self.fields[3].trim().to_string(),
+        }
+    }
+}
 
 /// Modal state. `Some` means the popover is up and owns the keyboard.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dialog {
-    /// New url being typed.
-    Add(String),
+    /// New download being filled in: url plus its own settings.
+    Add(Form),
     /// Editing the url of the download at this index; edit restarts it.
     Edit(usize, String),
     /// Confirming removal of the download at this index.
@@ -126,11 +149,32 @@ impl App {
                 KeyCode::Esc | KeyCode::Char('n') => {}
                 _ => self.dialog = Some(Dialog::QueueDelete(at)),
             },
-            Dialog::Add(buf) => {
-                if let Some(text) = self.type_into(buf, key, Dialog::Add) {
-                    self.add(&text);
+            Dialog::Add(mut form) => match key {
+                KeyCode::Enter => {
+                    let (url, over) = (form.fields[0].clone(), form.overrides());
+                    self.add_with(&url, over);
                 }
-            }
+                KeyCode::Esc => {}
+                KeyCode::Tab | KeyCode::Down => {
+                    form.cursor = (form.cursor + 1) % FORM_LABELS.len();
+                    self.dialog = Some(Dialog::Add(form));
+                }
+                KeyCode::BackTab | KeyCode::Up => {
+                    form.cursor = (form.cursor + FORM_LABELS.len() - 1) % FORM_LABELS.len();
+                    self.dialog = Some(Dialog::Add(form));
+                }
+                key => {
+                    let at = form.cursor;
+                    match key {
+                        KeyCode::Backspace => {
+                            form.fields[at].pop();
+                        }
+                        KeyCode::Char(c) => form.fields[at].push(c),
+                        _ => {}
+                    }
+                    self.dialog = Some(Dialog::Add(form));
+                }
+            },
             Dialog::Edit(at, buf) => {
                 if let Some(text) = self.type_into(buf, key, |b| Dialog::Edit(at, b)) {
                     self.edit(at, &text);
@@ -163,7 +207,7 @@ impl App {
         match key {
             KeyCode::Char('q') => return true,
             KeyCode::Char(c @ ('g' | 'i' | 's' | 'Z')) => self.pending = Some(c),
-            KeyCode::Char('a') => self.dialog = Some(Dialog::Add(String::new())),
+            KeyCode::Char('a') => self.dialog = Some(Dialog::Add(Form::default())),
             KeyCode::Char('e') => {
                 if let Some(d) = self.downloads.get(self.selected) {
                     self.dialog = Some(Dialog::Edit(self.selected, d.url.clone()));

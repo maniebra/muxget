@@ -126,7 +126,7 @@ impl App {
                         d.path = Some(dir.join(path));
                     }
                 }
-                Update::Discovered(queue, url) => self.enqueue(&url, queue),
+                Update::Discovered(queue, url, over) => self.enqueue(&url, queue, over),
                 Update::Notice(text) => self.message = text,
                 Update::Finished(id, s) => {
                     if let Some(d) = self.find(id) {

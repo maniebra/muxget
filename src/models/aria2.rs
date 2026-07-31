@@ -2,7 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::models::backend::Backend;
-use crate::models::download::Progress;
+use crate::models::download::{Overrides, Progress};
 use crate::utils::{args, parse};
 
 pub struct Aria2;
@@ -29,15 +29,22 @@ impl Backend for Aria2 {
         FILE_EXTS.iter().any(|e| path.ends_with(e))
     }
 
-    fn command(&self, url: &str, dir: &Path) -> Command {
+    fn command(&self, url: &str, dir: &Path, over: &Overrides) -> Command {
         let mut c = Command::new("aria2c");
         c.arg("--summary-interval=1")
             .arg("--console-log-level=warn")
             .arg("--continue=true")
             .arg("--dir")
-            .arg(dir);
-        // User flags come last so they override anything set above.
-        c.args(args::load(self.name())).arg(url);
+            .arg(if over.dir.is_empty() { dir } else { Path::new(&over.dir) });
+        c.args(args::load(self.name()));
+        // This item's own settings come last, beating the global flags.
+        if !over.name.is_empty() {
+            c.arg("--out").arg(&over.name);
+        }
+        if !over.rate.is_empty() {
+            c.arg(format!("--max-download-limit={}", over.rate));
+        }
+        c.arg(url);
         c
     }
 

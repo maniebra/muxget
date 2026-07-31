@@ -18,7 +18,8 @@ fn app_with(statuses: &[Status]) -> App {
             backend: "aria2c",
             status: s.clone(),
             progress: Default::default(),
-            path: None,
+            over: Default::default(),
+        path: None,
         child: None,
         })
         .collect();
@@ -33,6 +34,7 @@ fn running_row(id: usize) -> Download {
         backend: "aria2c",
         status: Status::Running,
         progress: Default::default(),
+        over: Default::default(),
         path: None,
         child: None,
     }
@@ -171,10 +173,10 @@ fn restore_rebuilds_last_sessions_list() {
     app.queues[1].paused = true;
 
     app.restore(&[
-        SavedDownload { queue: 0, status: Status::Queued, percent: 42.0, url: "https://a.com/x.iso".into() },
-        SavedDownload { queue: 1, status: Status::Done, percent: 0.0, url: "https://b.com/y.iso".into() },
-        SavedDownload { queue: 9, status: Status::Queued, percent: 0.0, url: "https://c.com/z.iso".into() },
-        SavedDownload { queue: 0, status: Status::Queued, percent: 0.0, url: "not a url".into() },
+        SavedDownload { over: Default::default(), queue: 0, status: Status::Queued, percent: 42.0, url: "https://a.com/x.iso".into() },
+        SavedDownload { over: Default::default(), queue: 1, status: Status::Done, percent: 0.0, url: "https://b.com/y.iso".into() },
+        SavedDownload { over: Default::default(), queue: 9, status: Status::Queued, percent: 0.0, url: "https://c.com/z.iso".into() },
+        SavedDownload { over: Default::default(), queue: 0, status: Status::Queued, percent: 0.0, url: "not a url".into() },
     ]);
 
     assert_eq!(app.downloads.len(), 3, "the unroutable url is dropped");

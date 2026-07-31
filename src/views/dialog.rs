@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Clear, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::controllers::app::App;
-use crate::controllers::keys::{menu_for, Dialog};
+use crate::controllers::keys::{menu_for, Dialog, Form, FORM_LABELS};
 use crate::views::theme::Theme;
 
 /// Centered popover, at most `w` x `h` but never wider than the terminal.
@@ -31,7 +31,11 @@ pub fn draw(f: &mut Frame, app: &App) {
     };
     let t = &app.theme;
     let (title, body, hint) = match dialog {
-        Dialog::Add(buf) => ("add download", field(t, buf), "Enter add · Esc cancel"),
+        Dialog::Add(form) => (
+            "add download",
+            form_lines(t, form),
+            "Tab next · Enter add · Esc cancel",
+        ),
         Dialog::Edit(_, buf) => ("edit url", field(t, buf), "Enter restart · Esc cancel"),
         Dialog::Delete(at) => (
             "delete download",
@@ -175,6 +179,37 @@ fn draw_menu(f: &mut Frame, app: &App, prefix: char) {
 
 fn field<'a>(t: &Theme, buf: &str) -> Vec<Line<'a>> {
     named(t, "url", buf)
+}
+
+/// One line per field; only the focused one shows a caret. The three override
+/// fields say what leaving them empty means, so the form documents itself.
+fn form_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
+    let hints = ["", "the download directory", "the backend's choice", "no limit"];
+    FORM_LABELS
+        .iter()
+        .enumerate()
+        .map(|(i, label)| {
+            let on = i == form.cursor;
+            let value = &form.fields[i];
+            let shown = match (on, value.is_empty()) {
+                (true, _) => format!("{value}▏"),
+                (false, true) => format!("— {}", hints[i]),
+                (false, false) => value.clone(),
+            };
+            Line::from(vec![
+                Span::styled(
+                    format!("{:>11} ", label),
+                    Style::default().fg(if on { t.accent } else { t.muted }),
+                ),
+                Span::styled(
+                    shown,
+                    Style::default()
+                        .fg(if value.is_empty() && !on { t.muted } else { t.fg })
+                        .add_modifier(if on { Modifier::BOLD } else { Modifier::empty() }),
+                ),
+            ])
+        })
+        .collect()
 }
 
 fn named<'a>(t: &Theme, label: &str, buf: &str) -> Vec<Line<'a>> {

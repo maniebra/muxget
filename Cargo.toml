@@ -61,3 +61,7 @@ path = "tests/controllers/options.rs"
 [[test]]
 name = "views_theme"
 path = "tests/views/theme.rs"
+
+[[test]]
+name = "views_ui"
+path = "tests/views/ui.rs"

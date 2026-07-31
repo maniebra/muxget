@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::models::download::{Download, Status};
+use crate::models::download::{Download, Overrides, Status};
 use crate::models::queue::{self, Queue, DEFAULT};
 use crate::utils::config_dir;
 
@@ -22,6 +22,7 @@ pub struct SavedDownload {
     pub status: Status,
     pub percent: f32,
     pub url: String,
+    pub over: Overrides,
 }
 
 fn path() -> PathBuf {
@@ -55,7 +56,9 @@ impl State {
     }
 
     /// `dir = <path>`, `queue = <name>|<slots>|<window>`,
-    /// `download = <queue>|<status>|<percent>|<url>`.
+    /// `download = <queue>|<status>|<percent>|<url>`, optionally followed by
+    /// `over = <dir>|<name>|<rate>` for the download above it — its own line,
+    /// so a url with a `|` in it stays the last unsplit field.
     /// A malformed line is skipped rather than losing the whole file.
     pub fn parse(text: &str) -> State {
         let mut state = State::default();
@@ -104,7 +107,18 @@ impl State {
                         status: status_from(status.trim()),
                         percent: percent.clamp(0.0, 100.0),
                         url: url.trim().to_string(),
+                        over: Overrides::default(),
                     });
+                }
+                // Attaches to the download above it; a stray one is ignored.
+                "over" => {
+                    let Some(last) = state.downloads.last_mut() else { continue };
+                    let mut parts = value.splitn(3, '|');
+                    last.over = Overrides {
+                        dir: parts.next().unwrap_or_default().trim().to_string(),
+                        name: parts.next().unwrap_or_default().trim().to_string(),
+                        rate: parts.next().unwrap_or_default().trim().to_string(),
+                    };
                 }
                 _ => {}
             }
@@ -125,6 +139,12 @@ impl State {
                 d.progress.percent,
                 d.url
             ));
+            if !d.over.is_empty() {
+                text.push_str(&format!(
+                    "over = {}|{}|{}\n",
+                    d.over.dir, d.over.name, d.over.rate
+                ));
+            }
         }
         text
     }

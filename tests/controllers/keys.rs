@@ -19,7 +19,8 @@ fn app_with(statuses: &[Status]) -> App {
             backend: "aria2c",
             status: s.clone(),
             progress: Default::default(),
-            path: None,
+            over: Default::default(),
+        path: None,
         child: None,
         })
         .collect();
@@ -33,6 +34,13 @@ fn typed(app: &mut App, keys: &str) {
     }
 }
 
+fn url_field(app: &App) -> String {
+    match &app.dialog {
+        Some(Dialog::Add(form)) => form.fields[0].clone(),
+        other => panic!("expected the add form, got {other:?}"),
+    }
+}
+
 #[test]
 fn add_dialog_captures_typing_until_escape() {
     let mut app = app_with(&[]);
@@ -40,11 +48,11 @@ fn add_dialog_captures_typing_until_escape() {
     app.on_key(KeyCode::Char('a'));
     typed(&mut app, "htp");
     app.on_key(KeyCode::Backspace);
-    assert_eq!(app.dialog, Some(Dialog::Add("ht".into())));
+    assert_eq!(url_field(&app), "ht");
 
     // While a dialog is open, `q` types instead of quitting.
     assert!(!app.on_key(KeyCode::Char('q')));
-    assert_eq!(app.dialog, Some(Dialog::Add("htq".into())));
+    assert_eq!(url_field(&app), "htq");
 
     app.on_key(KeyCode::Esc);
     assert_eq!(app.dialog, None);
@@ -125,4 +133,31 @@ fn zz_quits_but_a_lone_z_does_not() {
     let mut app = app_with(&[]);
     app.on_key(KeyCode::Char('Z'));
     assert!(!app.on_key(KeyCode::Char('x')), "Zx is not a quit");
+}
+
+#[test]
+fn the_add_form_carries_per_item_settings_into_the_download() {
+    use crossterm::event::KeyCode::Tab;
+
+    let mut app = app_with(&[]);
+    app.on_key(KeyCode::Char('a'));
+    typed(&mut app, "https://example.com/a.iso");
+    app.on_key(Tab);
+    typed(&mut app, "/tmp/here");
+    app.on_key(Tab);
+    typed(&mut app, "mine.iso");
+    app.on_key(Tab);
+    typed(&mut app, "2M");
+    app.on_key(KeyCode::Enter);
+
+    assert_eq!(app.dialog, None);
+    let d = &app.downloads[0];
+    assert_eq!(d.url, "https://example.com/a.iso");
+    assert_eq!(d.over.dir, "/tmp/here");
+    assert_eq!(d.over.name, "mine.iso");
+    assert_eq!(d.over.rate, "2M");
+
+    // A plain add leaves every override empty.
+    app.add("https://example.com/b.iso");
+    assert!(app.downloads[1].over.is_empty());
 }

@@ -18,7 +18,8 @@ fn app_with(statuses: &[Status]) -> App {
             backend: "aria2c",
             status: s.clone(),
             progress: Default::default(),
-            path: None,
+            over: Default::default(),
+        path: None,
         child: None,
         })
         .collect();
@@ -33,6 +34,7 @@ fn running_row(id: usize) -> Download {
         backend: "aria2c",
         status: Status::Running,
         progress: Default::default(),
+        over: Default::default(),
         path: None,
         child: None,
     }

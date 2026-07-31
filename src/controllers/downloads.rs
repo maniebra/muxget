@@ -1,7 +1,7 @@
 use std::process::Stdio;
 
 use crate::controllers::app::App;
-use crate::models::download::{Download, Progress, Status, Update};
+use crate::models::download::{Download, Overrides, Progress, Status, Update};
 use crate::models::state::SavedDownload;
 use crate::models::{backend, pick, queue, ytdlp};
 use crate::utils::parse::{bytes, for_each_line};
@@ -44,20 +44,26 @@ impl App {
     /// Enqueue a url. Playlists are expanded into one row per entry first, so
     /// each video gets its own progress, slot and cancel.
     pub fn add(&mut self, url: &str) {
+        self.add_with(url, Overrides::default());
+    }
+
+    /// Enqueue a url with settings that apply to it alone; a playlist passes
+    /// the same settings down to every entry it expands into.
+    pub fn add_with(&mut self, url: &str, over: Overrides) {
         let url = url.trim();
         if url.is_empty() {
             return;
         }
         if ytdlp::expands_playlist(url) {
-            self.expand_playlist(url);
+            self.expand_playlist(url, over);
             return;
         }
         let queue = self.queue().id;
-        self.enqueue(url, queue);
+        self.enqueue(url, queue, over);
     }
 
     /// Add one url to `queue`. It starts as soon as that queue has a slot.
-    pub(crate) fn enqueue(&mut self, url: &str, queue: usize) {
+    pub(crate) fn enqueue(&mut self, url: &str, queue: usize, over: Overrides) {
         let Some(backend) = pick(url) else {
             self.message = format!("no backend accepts {url}");
             return;
@@ -69,6 +75,7 @@ impl App {
             queue,
             url: url.to_string(),
             backend: backend.name(),
+            over,
             status: Status::Queued,
             progress: Default::default(),
             path: None,
@@ -80,7 +87,7 @@ impl App {
     }
 
     /// List a playlist's entries off-thread; each one arrives as `Discovered`.
-    fn expand_playlist(&mut self, url: &str) {
+    fn expand_playlist(&mut self, url: &str, over: Overrides) {
         let queue = self.queue().id;
         let (tx, url) = (self.tx.clone(), url.to_string());
         self.message = format!("expanding playlist {url}…");
@@ -104,7 +111,7 @@ impl App {
             for_each_line(stdout, |line| {
                 if line.starts_with("http") {
                     found += 1;
-                    let _ = tx.send(Update::Discovered(queue, line.to_string()));
+                    let _ = tx.send(Update::Discovered(queue, line.to_string(), over.clone()));
                 }
             });
             let _ = child.wait();
@@ -130,6 +137,7 @@ impl App {
                 queue: if known.contains(&s.queue) { s.queue } else { queue::DEFAULT },
                 url: s.url.clone(),
                 backend: backend.name(),
+                over: s.over.clone(),
                 status: s.status.clone(),
                 progress: Progress {
                     // A finished row is at 100 whatever the last report said.
@@ -158,13 +166,13 @@ impl App {
     }
 
     fn start(&mut self, at: usize) {
-        let (id, url) = match self.downloads.get(at) {
-            Some(d) => (d.id, d.url.clone()),
+        let (id, url, over) = match self.downloads.get(at) {
+            Some(d) => (d.id, d.url.clone(), d.over.clone()),
             None => return,
         };
         let Some(backend) = pick(&url) else { return };
         let name = backend.name();
-        match backend::run(backend, &url, &self.dir, id, self.tx.clone()) {
+        match backend::run(backend, &url, &self.dir, &over, id, self.tx.clone()) {
             Ok(child) => {
                 let d = &mut self.downloads[at];
                 d.child = Some(child);

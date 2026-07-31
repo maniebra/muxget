@@ -5,6 +5,24 @@ pub struct Progress {
     pub eta: String,
 }
 
+/// Per-download tweaks typed in the add form. An empty field means "use the
+/// app-wide setting"; each backend maps the rest to its own flags.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Overrides {
+    /// Download directory for this item only.
+    pub dir: String,
+    /// Output file name for this item only.
+    pub name: String,
+    /// Speed cap, in whatever the backend accepts (`2M`, `500K`).
+    pub rate: String,
+}
+
+impl Overrides {
+    pub fn is_empty(&self) -> bool {
+        *self == Overrides::default()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Status {
     /// Accepted, waiting for a free slot.
@@ -25,6 +43,8 @@ pub struct Download {
     pub queue: usize,
     pub url: String,
     pub backend: &'static str,
+    /// Settings that apply to this download alone.
+    pub over: Overrides,
     pub status: Status,
     pub progress: Progress,
     /// Where the file landed, once a backend names it. Not persisted — a
@@ -77,8 +97,8 @@ pub enum Update {
     /// The output path a backend just named.
     Located(usize, String),
     Finished(usize, Status),
-    /// A playlist entry found by the expander: (queue id, url).
-    Discovered(usize, String),
+    /// A playlist entry found by the expander: (queue id, url, overrides).
+    Discovered(usize, String, Overrides),
     /// Status line for the footer.
     Notice(String),
 }

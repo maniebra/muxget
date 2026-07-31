@@ -40,4 +40,8 @@ impl Download {
 pub enum Update {
     Progress(usize, Progress),
     Finished(usize, Status),
+    /// A playlist entry found by the expander: (queue id, url).
+    Discovered(usize, String),
+    /// Status line for the footer.
+    Notice(String),
 }

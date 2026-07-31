@@ -28,6 +28,10 @@ name = "models_backend"
 path = "tests/models/backend.rs"
 
 [[test]]
+name = "models_ytdlp"
+path = "tests/models/ytdlp.rs"
+
+[[test]]
 name = "controllers_app"
 path = "tests/controllers/app.rs"
 

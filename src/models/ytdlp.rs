@@ -7,6 +7,33 @@ use crate::utils::{args, parse};
 
 pub struct YtDlp;
 
+/// A url yt-dlp would treat as a playlist, channel or mix.
+pub fn is_playlist(url: &str) -> bool {
+    let url = url.to_lowercase();
+    url.contains("list=")
+        || url.contains("/playlist")
+        || url.contains("/channel/")
+        || url.contains("/@")
+        || url.ends_with("/videos")
+}
+
+/// Expand a playlist into its entries rather than downloading it as one job —
+/// unless the user asked yt-dlp for single videos, in which case respect that.
+pub fn expands_playlist(url: &str) -> bool {
+    is_playlist(url) && !args::load("yt-dlp").iter().any(|a| a == "--no-playlist")
+}
+
+/// Lists the entry urls, one per line, without touching the media itself.
+pub fn list_command(url: &str) -> Command {
+    let mut c = Command::new("yt-dlp");
+    c.arg("--flat-playlist")
+        .arg("--ignore-errors")
+        .arg("--print")
+        .arg("%(url)s")
+        .arg(url);
+    c
+}
+
 impl Backend for YtDlp {
     fn name(&self) -> &'static str {
         "yt-dlp"

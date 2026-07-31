@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -7,8 +8,10 @@ use ratatui::DefaultTerminal;
 
 use crate::models::download::{Download, Status, Update};
 use crate::models::queue::{self, Queue};
+use crate::models::ytdlp;
 use crate::models::{backend, pick};
 use crate::controllers::options::Options;
+use crate::utils::parse::for_each_line;
 use crate::views;
 use crate::views::theme::Theme;
 
@@ -170,12 +173,23 @@ impl App {
         }
     }
 
-    /// Enqueue a url. It starts as soon as a slot is free.
+    /// Enqueue a url. Playlists are expanded into one row per entry first, so
+    /// each video gets its own progress, slot and cancel.
     pub fn add(&mut self, url: &str) {
         let url = url.trim();
         if url.is_empty() {
             return;
         }
+        if ytdlp::expands_playlist(url) {
+            self.expand_playlist(url);
+            return;
+        }
+        let queue = self.queue().id;
+        self.enqueue(url, queue);
+    }
+
+    /// Add one url to `queue`. It starts as soon as that queue has a slot.
+    fn enqueue(&mut self, url: &str, queue: usize) {
         let Some(backend) = pick(url) else {
             self.message = format!("no backend accepts {url}");
             return;
@@ -184,7 +198,7 @@ impl App {
         self.next_id += 1;
         self.downloads.push(Download {
             id,
-            queue: self.queue().id,
+            queue,
             url: url.to_string(),
             backend: backend.name(),
             status: Status::Queued,
@@ -193,6 +207,42 @@ impl App {
         });
         self.message = format!("queued {url}");
         self.pump();
+    }
+
+    /// List a playlist's entries off-thread; each one arrives as `Discovered`.
+    fn expand_playlist(&mut self, url: &str) {
+        let queue = self.queue().id;
+        let (tx, url) = (self.tx.clone(), url.to_string());
+        self.message = format!("expanding playlist {url}…");
+
+        std::thread::spawn(move || {
+            let mut child = match ytdlp::list_command(&url)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .stdin(Stdio::null())
+                .spawn()
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = tx.send(Update::Notice(format!("yt-dlp: {e}")));
+                    return;
+                }
+            };
+            let stdout = child.stdout.take().expect("piped above");
+
+            let mut found = 0;
+            for_each_line(stdout, |line| {
+                if line.starts_with("http") {
+                    found += 1;
+                    let _ = tx.send(Update::Discovered(queue, line.to_string()));
+                }
+            });
+            let _ = child.wait();
+            let _ = tx.send(Update::Notice(match found {
+                0 => format!("no playlist entries found in {url}"),
+                n => format!("queued {n} entries from the playlist"),
+            }));
+        });
     }
 
     /// The queue currently being viewed. Always valid — `current` is clamped
@@ -393,6 +443,8 @@ impl App {
                         d.progress = p;
                     }
                 }
+                Update::Discovered(queue, url) => self.enqueue(&url, queue),
+                Update::Notice(text) => self.message = text,
                 Update::Finished(id, s) => {
                     if let Some(d) = self.find(id) {
                         d.child = None;

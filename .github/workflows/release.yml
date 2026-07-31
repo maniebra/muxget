@@ -1,0 +1,133 @@
+name: release
+
+# Publishing a release builds the packages and attaches them to it.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            deb: true
+            rpm: true
+            appimage: true
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+            deb: true
+            rpm: true
+            appimage: true
+          - target: x86_64-apple-darwin
+            os: macos-13
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-pc-windows-msvc
+            os: windows-2022
+          - target: aarch64-pc-windows-msvc
+            os: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # muxget-v<version>-<target>.tar.gz / .zip
+      - name: Archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          name="muxget-v${version}-${{ matrix.target }}"
+          # Staged outside dist/, which holds only finished packages.
+          mkdir -p "stage/$name" dist
+          case "${{ matrix.target }}" in
+            *windows*) cp "target/${{ matrix.target }}/release/muxget.exe" "stage/$name/" ;;
+            *) cp "target/${{ matrix.target }}/release/muxget" "stage/$name/" ;;
+          esac
+          cp README.md LICENSE "stage/$name/"
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            (cd stage && 7z a "../dist/$name.zip" "$name" >/dev/null)
+          else
+            tar czf "dist/$name.tar.gz" -C stage "$name"
+          fi
+
+      - name: Debian package
+        if: matrix.deb
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-deb --locked
+          cargo deb --no-build --target ${{ matrix.target }} --output dist/
+          version="${GITHUB_REF_NAME#v}"
+          for f in dist/*.deb; do
+            mv "$f" "dist/muxget-v${version}-${{ matrix.target }}.deb"
+          done
+
+      - name: RPM package
+        if: matrix.rpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-generate-rpm --locked
+          version="${GITHUB_REF_NAME#v}"
+          cargo generate-rpm --target ${{ matrix.target }} \
+            -o "dist/muxget-v${version}-${{ matrix.target }}.rpm"
+
+      # A TUI needs no bundled libraries, so the AppImage is the binary plus
+      # the metadata appimagetool insists on.
+      - name: AppImage
+        if: matrix.appimage
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          arch=$(uname -m)
+          root="stage/AppDir"
+          mkdir -p "$root/usr/bin"
+          cp "target/${{ matrix.target }}/release/muxget" "$root/usr/bin/"
+          cat > "$root/muxget.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=muxget
+          Comment=Terminal download manager driving aria2c and yt-dlp
+          Exec=muxget
+          Icon=muxget
+          Categories=Network;FileTransfer;ConsoleOnly;
+          Terminal=true
+          DESKTOP
+          cat > "$root/muxget.svg" <<'ICON'
+          <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">
+            <rect width="256" height="256" rx="32" fill="#1b1d2b"/>
+            <path d="M128 48v112M80 120l48 48 48-48M64 208h128" stroke="#82aaff"
+                  stroke-width="16" fill="none" stroke-linecap="round"/>
+          </svg>
+          ICON
+          ln -s usr/bin/muxget "$root/AppRun"
+          curl -fsSL -o appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${arch}.AppImage"
+          chmod +x appimagetool
+          # No FUSE on the runners.
+          ./appimagetool --appimage-extract-and-run "$root" \
+            "dist/muxget-v${version}-${arch}.AppImage"
+
+      - name: Upload to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/muxget-v*.* --clobber

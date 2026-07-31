@@ -71,7 +71,7 @@
             Keywords='Installer'
             Description='Terminal download manager driving aria2c and yt-dlp'
             Manufacturer='muxget'
-            InstallerVersion='450'
+            InstallerVersion='500'
             Languages='1033'
             Compressed='yes'
             InstallScope='perMachine'
@@ -195,7 +195,7 @@
           Disabling the EULA dialog in the installer requires commenting out
           or removing the following `WixVariable` tag
         -->
-        <WixVariable Id='WixUILicenseRtf' Value='false'/>
+        <WixVariable Id='WixUILicenseRtf' Value='wix\License.rtf'/>
         
         
         <!--

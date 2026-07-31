@@ -13,6 +13,8 @@ pub enum Dialog {
     Edit(usize, String),
     /// Confirming removal of the download at this index.
     Delete(usize),
+    /// Confirming removal of the download at this index *and* its file.
+    DeleteData(usize),
     /// Name for a new queue.
     QueueNew(String),
     /// Renaming the queue at this index in `queues`.
@@ -46,6 +48,14 @@ pub const QUEUE_MENU: &[MenuItem] = &[
     MenuItem { key: '-', label: "one less slot" },
 ];
 
+/// Item commands, reached with the `i` prefix and acting on the selected row.
+pub const ITEM_MENU: &[MenuItem] = &[
+    MenuItem { key: 'r', label: "remove" },
+    MenuItem { key: 'R', label: "remove and delete the file" },
+    MenuItem { key: 'o', label: "open" },
+    MenuItem { key: 'f', label: "open containing folder" },
+];
+
 /// Settings commands, reached with the `s` prefix.
 pub const SETTINGS_MENU: &[MenuItem] = &[
     MenuItem { key: 't', label: "next theme" },
@@ -58,6 +68,7 @@ pub const SETTINGS_MENU: &[MenuItem] = &[
 pub fn menu_for(prefix: char) -> Option<(&'static str, &'static [MenuItem])> {
     match prefix {
         'g' => Some(("queue", QUEUE_MENU)),
+        'i' => Some(("item", ITEM_MENU)),
         's' => Some(("settings", SETTINGS_MENU)),
         _ => None,
     }
@@ -105,6 +116,11 @@ impl App {
                 KeyCode::Esc | KeyCode::Char('n') => {}
                 _ => self.dialog = Some(Dialog::Delete(at)),
             },
+            Dialog::DeleteData(at) => match key {
+                KeyCode::Enter | KeyCode::Char('y') => self.delete_with_data(at),
+                KeyCode::Esc | KeyCode::Char('n') => {}
+                _ => self.dialog = Some(Dialog::DeleteData(at)),
+            },
             Dialog::QueueDelete(at) => match key {
                 KeyCode::Enter | KeyCode::Char('y') => self.delete_queue(at),
                 KeyCode::Esc | KeyCode::Char('n') => {}
@@ -146,7 +162,7 @@ impl App {
     fn on_normal_key(&mut self, key: KeyCode) -> bool {
         match key {
             KeyCode::Char('q') => return true,
-            KeyCode::Char(c @ ('g' | 's' | 'Z')) => self.pending = Some(c),
+            KeyCode::Char(c @ ('g' | 'i' | 's' | 'Z')) => self.pending = Some(c),
             KeyCode::Char('a') => self.dialog = Some(Dialog::Add(String::new())),
             KeyCode::Char('e') => {
                 if let Some(d) = self.downloads.get(self.selected) {
@@ -184,6 +200,18 @@ impl App {
             ('s', 'd') => self.dialog = Some(Dialog::SetDir(self.dir.display().to_string())),
             ('s', 'a') => self.options = Some(Options::open("aria2c")),
             ('s', 'y') => self.options = Some(Options::open("yt-dlp")),
+            ('i', 'r') => {
+                if self.downloads.get(self.selected).is_some() {
+                    self.dialog = Some(Dialog::Delete(self.selected));
+                }
+            }
+            ('i', 'R') => {
+                if self.downloads.get(self.selected).is_some() {
+                    self.dialog = Some(Dialog::DeleteData(self.selected));
+                }
+            }
+            ('i', 'o') => self.open_item(self.selected),
+            ('i', 'f') => self.reveal_item(self.selected),
             ('g', 'n') => self.dialog = Some(Dialog::QueueNew(String::new())),
             ('g', 'r') => {
                 self.dialog = Some(Dialog::QueueRename(self.current, self.queue().name.clone()))

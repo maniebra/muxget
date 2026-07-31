@@ -27,6 +27,9 @@ pub struct Download {
     pub backend: &'static str,
     pub status: Status,
     pub progress: Progress,
+    /// Where the file landed, once a backend names it. Not persisted — a
+    /// restarted transfer names it again.
+    pub path: Option<std::path::PathBuf>,
     pub child: Option<std::sync::Arc<std::sync::Mutex<std::process::Child>>>,
 }
 
@@ -71,6 +74,8 @@ impl Download {
 /// What a worker thread reports back to the controller.
 pub enum Update {
     Progress(usize, Progress),
+    /// The output path a backend just named.
+    Located(usize, String),
     Finished(usize, Status),
     /// A playlist entry found by the expander: (queue id, url).
     Discovered(usize, String),

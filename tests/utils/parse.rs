@@ -34,3 +34,27 @@ fn splits_on_carriage_returns_and_newlines() {
     parse::for_each_line(&b"a\rb\nc\r\n\r\nd"[..], |l| got.push(l.to_string()));
     assert_eq!(got, ["a", "b", "c", "d"]);
 }
+
+#[test]
+fn destination_lines_from_both_backends() {
+    use muxget::utils::parse::destination;
+    assert_eq!(
+        destination("[download] Destination: /tmp/dl/video.mp4").as_deref(),
+        Some("/tmp/dl/video.mp4")
+    );
+    assert_eq!(
+        destination("[Merger] Merging formats into \"/tmp/dl/v.mkv\"").as_deref(),
+        Some("/tmp/dl/v.mkv")
+    );
+    assert_eq!(
+        destination("[download] /tmp/dl/v.mp4 has already been downloaded").as_deref(),
+        Some("/tmp/dl/v.mp4")
+    );
+    assert_eq!(
+        destination("a1b2c3|OK  |   1.2MiB/s|/tmp/dl/arch.iso").as_deref(),
+        Some("/tmp/dl/arch.iso")
+    );
+    // The result table's header is not a finished row.
+    assert_eq!(destination("gid   |stat|avg speed  |path/URI"), None);
+    assert_eq!(destination("[download]  42.0% of 1.0GiB at 3MiB/s"), None);
+}

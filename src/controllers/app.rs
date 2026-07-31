@@ -118,6 +118,14 @@ impl App {
                         d.progress = p;
                     }
                 }
+                Update::Located(id, path) => {
+                    // yt-dlp may print a path relative to where it was told to
+                    // work; anchor it so the actions get a usable file.
+                    let dir = self.dir.clone();
+                    if let Some(d) = self.find(id) {
+                        d.path = Some(dir.join(path));
+                    }
+                }
                 Update::Discovered(queue, url) => self.enqueue(&url, queue),
                 Update::Notice(text) => self.message = text,
                 Update::Finished(id, s) => {

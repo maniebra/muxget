@@ -4,7 +4,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use crate::models::download::{Progress, Status, Update};
-use crate::utils::parse::for_each_line;
+use crate::utils::parse::{destination, for_each_line};
 
 /// A download tool. Supply a command line and a progress parser; the spawning,
 /// line reading and reporting below is shared by every implementation.
@@ -43,6 +43,8 @@ pub fn run(
         for_each_line(stdout, |line| {
             if let Some(p) = backend.parse(line) {
                 let _ = tx.send(Update::Progress(id, p));
+            } else if let Some(path) = destination(line) {
+                let _ = tx.send(Update::Located(id, path));
             }
         });
         // ponytail: lock is only contended by cancel, which happens before EOF.

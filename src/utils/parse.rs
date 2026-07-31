@@ -92,3 +92,25 @@ pub fn for_each_line(mut r: impl Read, mut f: impl FnMut(&str)) {
         f(last);
     }
 }
+
+/// The output file a backend just named, from either tool's chatter. Used for
+/// open / reveal / delete-with-data; a download that never names one keeps
+/// `None` and those actions fall back to the download directory.
+pub fn destination(line: &str) -> Option<String> {
+    let line = line.trim();
+    if let Some(rest) = line.strip_prefix("[download] Destination:") {
+        return Some(rest.trim().to_string());
+    }
+    if let Some(rest) = line.strip_prefix("[Merger] Merging formats into") {
+        return Some(rest.trim().trim_matches('"').to_string());
+    }
+    if let Some(rest) = line.strip_prefix("[download] ") {
+        return rest.strip_suffix(" has already been downloaded").map(str::to_string);
+    }
+    // aria2c's result table: `gid|OK  |speed|path`. The header row says `stat`,
+    // so only a finished row matches.
+    if line.contains("|OK") && line.matches('|').count() >= 3 {
+        return Some(line.rsplit('|').next()?.trim().to_string());
+    }
+    None
+}

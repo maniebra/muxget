@@ -43,6 +43,7 @@ fn row(queue: usize, status: Status, url: &str) -> Download {
         backend: "aria2c",
         status,
         progress: Default::default(),
+        path: None,
         child: None,
     }
 }

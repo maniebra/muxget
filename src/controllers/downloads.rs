@@ -71,6 +71,7 @@ impl App {
             backend: backend.name(),
             status: Status::Queued,
             progress: Default::default(),
+            path: None,
             child: None,
         });
         self.message = format!("queued {url}");
@@ -135,6 +136,7 @@ impl App {
                     percent: if s.status == Status::Done { 100.0 } else { s.percent },
                     ..Default::default()
                 },
+                path: None,
                 child: None,
             });
         }
@@ -229,6 +231,60 @@ impl App {
         self.downloads.remove(at);
         self.clamp_selection();
         self.save_state();
+    }
+
+    /// Remove the row and delete what it downloaded. The file is only known
+    /// once a backend named it, so an untouched row just goes away.
+    pub fn delete_with_data(&mut self, at: usize) {
+        let Some(d) = self.downloads.get(at) else { return };
+        let path = d.path.clone();
+        self.delete(at);
+        self.message = match path {
+            // A partial file leaves a sidecar behind; both tools use `.part`
+            // or `.aria2`, and neither is worth keeping without its file.
+            Some(p) => match std::fs::remove_file(&p) {
+                Ok(()) => {
+                    for ext in ["part", "aria2"] {
+                        let _ = std::fs::remove_file(p.with_extension(ext));
+                    }
+                    format!("deleted {}", p.display())
+                }
+                Err(e) => format!("could not delete {}: {e}", p.display()),
+            },
+            None => "removed; no file was written yet".into(),
+        };
+    }
+
+    /// Hand the file to the desktop. Without a known file, open the download
+    /// directory instead — the folder is always a useful answer.
+    pub fn open_item(&mut self, at: usize) {
+        let target = match self.downloads.get(at).and_then(|d| d.path.clone()) {
+            Some(p) => p,
+            None => self.dir.clone(),
+        };
+        self.open_path(&target);
+    }
+
+    /// Open the folder the file sits in, not the file itself.
+    pub fn reveal_item(&mut self, at: usize) {
+        let target = match self.downloads.get(at).and_then(|d| d.path.clone()) {
+            Some(p) => p.parent().unwrap_or(&self.dir).to_path_buf(),
+            None => self.dir.clone(),
+        };
+        self.open_path(&target);
+    }
+
+    fn open_path(&mut self, path: &std::path::Path) {
+        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        self.message = match std::process::Command::new(opener)
+            .arg(path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(_) => format!("opened {}", path.display()),
+            Err(e) => format!("could not open {}: {e}", path.display()),
+        };
     }
 
     pub fn active_in(&self, queue: usize) -> usize {

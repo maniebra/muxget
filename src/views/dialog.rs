@@ -48,6 +48,26 @@ pub fn draw(f: &mut Frame, app: &App) {
             ],
             "y/Enter delete · n/Esc keep",
         ),
+        Dialog::DeleteData(at) => (
+            "delete download and file",
+            vec![
+                Line::styled(
+                    "Remove this download and delete what it wrote to disk?",
+                    Style::default().fg(t.fg),
+                ),
+                Line::default(),
+                Line::styled(
+                    app.downloads
+                        .get(*at)
+                        .map_or(String::new(), |d| match &d.path {
+                            Some(p) => p.display().to_string(),
+                            None => format!("{} (no file written yet)", d.url),
+                        }),
+                    Style::default().fg(t.err),
+                ),
+            ],
+            "y/Enter delete · n/Esc keep",
+        ),
         Dialog::SetDir(buf) => (
             "download directory",
             named(t, "path", buf),

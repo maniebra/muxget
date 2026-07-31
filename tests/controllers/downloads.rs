@@ -18,7 +18,8 @@ fn app_with(statuses: &[Status]) -> App {
             backend: "aria2c",
             status: s.clone(),
             progress: Default::default(),
-            child: None,
+            path: None,
+        child: None,
         })
         .collect();
     app
@@ -32,6 +33,7 @@ fn running_row(id: usize) -> Download {
         backend: "aria2c",
         status: Status::Running,
         progress: Default::default(),
+        path: None,
         child: None,
     }
 }
@@ -185,4 +187,27 @@ fn restore_rebuilds_last_sessions_list() {
     assert!(app.downloads.iter().all(|d| d.child.is_none()));
     assert_eq!(app.downloads[0].progress.percent, 42.0, "progress survives a restart");
     assert_eq!(app.downloads[1].progress.percent, 100.0, "a done row is full");
+}
+
+#[test]
+fn remove_with_data_deletes_the_file_and_its_sidecar() {
+    let dir = std::env::temp_dir().join("muxget-test-remove-data");
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("x.iso");
+    std::fs::write(&file, b"data").unwrap();
+    std::fs::write(file.with_extension("aria2"), b"meta").unwrap();
+
+    let mut app = app_with(&[Status::Done]);
+    app.downloads[0].path = Some(file.clone());
+    app.delete_with_data(0);
+
+    assert!(app.downloads.is_empty());
+    assert!(!file.exists(), "the file is gone");
+    assert!(!file.with_extension("aria2").exists(), "so is the sidecar");
+
+    // A row that never wrote anything still removes cleanly.
+    let mut app = app_with(&[Status::Queued]);
+    app.delete_with_data(0);
+    assert!(app.downloads.is_empty());
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -127,6 +127,41 @@ pub fn on_path(program: &str) -> bool {
     })
 }
 
+/// The system clipboard, through whichever tool this desktop has. No X11 or
+/// Wayland library for one read: the tools are what a user already has, and
+/// the first one on `PATH` wins.
+pub fn clipboard() -> Option<String> {
+    const READERS: [(&str, &[&str]); 5] = [
+        ("wl-paste", &["--no-newline"]),
+        ("xclip", &["-o", "-selection", "clipboard"]),
+        ("xsel", &["--clipboard", "--output"]),
+        ("pbpaste", &[]),
+        ("powershell.exe", &["-NoProfile", "-Command", "Get-Clipboard"]),
+    ];
+    let (program, args) = READERS.into_iter().find(|(p, _)| on_path(p))?;
+    let out = std::process::Command::new(program).args(args).output().ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// Urls in pasted text, in the order they appear and without repeats. One per
+/// line: a line that is not a url is a note, a title or a stray word, and
+/// queueing it would only fail.
+pub fn urls_in(text: &str) -> Vec<String> {
+    let mut urls: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        let is_url = ["http://", "https://", "ftp://", "ftps://", "magnet:?"]
+            .iter()
+            .any(|scheme| line.starts_with(scheme));
+        if is_url && !urls.iter().any(|u| u == line) {
+            urls.push(line.to_string());
+        }
+    }
+    urls
+}
+
 /// Backends muxget drives that are not installed, in registry order. Empty is
 /// the happy case, so a caller can treat it as a boolean.
 pub fn missing_backends() -> Vec<&'static str> {

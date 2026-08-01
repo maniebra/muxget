@@ -148,6 +148,39 @@ impl App {
         self.pump();
     }
 
+    /// Read the clipboard and offer whatever urls are in it. Nothing is
+    /// queued until the preview is accepted — a clipboard is full of things
+    /// that are not downloads.
+    pub fn paste(&mut self) {
+        let Some(text) = crate::utils::clipboard() else {
+            self.message = "no clipboard tool found (wl-paste, xclip, xsel, pbpaste)".into();
+            return;
+        };
+        self.preview_paste(&text);
+    }
+
+    /// The clipboard's text, as a preview. Split out so it can be driven
+    /// without a clipboard.
+    pub fn preview_paste(&mut self, text: &str) {
+        let urls = crate::utils::urls_in(text);
+        if urls.is_empty() {
+            self.message = "no urls in the clipboard".into();
+            return;
+        }
+        self.message = format!("{} urls in the clipboard", urls.len());
+        // All picked: the usual paste is a list someone meant to download.
+        let picked = (0..urls.len()).collect();
+        self.dialog = Some(Dialog::Paste(urls, picked, 0));
+    }
+
+    /// Queue the urls that survived the preview, each routed as if typed.
+    pub fn add_pasted(&mut self, urls: &[String], picked: &[usize]) {
+        for url in picked.iter().filter_map(|i| urls.get(*i)) {
+            self.add(url);
+        }
+        self.message = format!("added {} of {} pasted urls", picked.len(), urls.len());
+    }
+
     /// List a playlist's entries off-thread; each one arrives as `Discovered`,
     /// or the whole list as `Listed` when the user wants to pick from it.
     fn expand_playlist(&mut self, url: &str, over: Overrides) {

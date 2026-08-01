@@ -74,7 +74,9 @@ shows the rest. Settings are one panel, opened with `s`.
 ## Adding a download
 
 `a` opens a form. Only the url is required; everything else overrides what
-would otherwise be decided for you, for that download alone.
+would otherwise be decided for you, for that download alone. `v` takes the urls
+straight from the clipboard — every line that is one — and shows them for
+confirmation before anything is queued.
 
 | field | means |
 |---|---|

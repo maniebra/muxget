@@ -78,3 +78,30 @@ fn a_leftover_backend_process_is_reaped_by_name() {
     // A pid that is gone is simply not there any more.
     assert!(!reap(pid, "sleep"));
 }
+
+#[test]
+fn pasted_text_yields_the_urls_and_nothing_else() {
+    use muxget::utils::urls_in;
+
+    let text = "\
+here are the files I meant:
+https://example.com/a.iso
+  https://example.com/b.iso
+not a url at all
+magnet:?xt=urn:btih:abc
+ftp://example.com/c.tar
+https://example.com/a.iso
+";
+    assert_eq!(
+        urls_in(text),
+        [
+            "https://example.com/a.iso",
+            "https://example.com/b.iso",
+            "magnet:?xt=urn:btih:abc",
+            "ftp://example.com/c.tar",
+        ],
+        "in order, trimmed, without the repeat or the prose"
+    );
+    assert!(urls_in("").is_empty());
+    assert!(urls_in("just a note\nand another").is_empty());
+}

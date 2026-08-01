@@ -242,7 +242,7 @@ fn draw_table(f: &mut Frame, app: &App, area: Rect) {
 
     if visible.is_empty() {
         f.render_widget(
-            Paragraph::new("\n  nothing here — press `a` to add a url")
+            Paragraph::new("\n  nothing here — press `a` to add a url, or `v` to paste some")
                 .style(Style::default().fg(t.muted).bg(t.bg))
                 .block(panel(t, &title, t.bg)),
             area,
@@ -442,9 +442,9 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let keys: &[(&str, &str)] = if area.width >= 100 {
-        &[("a", "add"), ("c", "crawl"), ("e", "edit"), ("d", "del"), ("p", "pause"), ("x", "stop"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
+        &[("a", "add"), ("v", "paste"), ("c", "crawl"), ("e", "edit"), ("d", "del"), ("p", "pause"), ("x", "stop"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
     } else if area.width >= 74 {
-        &[("a", "add"), ("c", "crawl"), ("d", "del"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
+        &[("a", "add"), ("v", "paste"), ("c", "crawl"), ("d", "del"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
     } else {
         &[("a", "add"), ("c", "crawl"), ("g…", "queue"), ("q", "quit")]
     };

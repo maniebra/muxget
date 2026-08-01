@@ -116,6 +116,17 @@ pub fn draw(f: &mut Frame, app: &App) {
             found_lines(t, found, picked, *at),
             "space pick · a all · Enter download · Esc cancel",
         ),
+        Dialog::Paste(urls, picked, at) => (
+            "paste from the clipboard",
+            pick_lines(
+                t,
+                format!("{} urls found · {} picked", urls.len(), picked.len()),
+                urls,
+                picked,
+                *at,
+            ),
+            "space pick · a all · Enter add · Esc cancel",
+        ),
         Dialog::Playlist(pick) => (
             "playlist entries",
             playlist_lines(t, pick),
@@ -145,7 +156,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     let area = centered(f.area(), 76, match dialog {
         Dialog::Add(_) => 16,
         Dialog::Crawl(_) => 13,
-        Dialog::Crawled(..) | Dialog::Playlist(_) => 20,
+        Dialog::Crawled(..) | Dialog::Playlist(_) | Dialog::Paste(..) => 20,
         // Its field plus the three lines of spec help.
         Dialog::QueueSchedule(..) => 13,
         _ => 9,

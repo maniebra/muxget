@@ -225,6 +225,21 @@ after queueing.
 Set `--no-playlist` in the yt-dlp options and expansion is skipped — muxget
 respects the choice and hands the url over whole.
 
+### Pasting
+
+`v` reads the system clipboard and shows what it found before anything is
+queued: one row per url, all picked, `space` and `a` to change that, `Enter` to
+add them, `Esc` to throw the lot away. Multi-line clipboards are the point —
+lines that are not urls are notes, titles or stray words, and are left out
+rather than queued to fail. A url repeated in the paste is added once.
+
+Each url is then routed exactly as if typed: rules apply, a playlist expands or
+opens its picker, and a magnet goes to aria2c.
+
+The clipboard is read through whichever tool the desktop has — `wl-paste`,
+`xclip`, `xsel`, `pbpaste`, or PowerShell's `Get-Clipboard` — and the first one
+on `PATH` wins. With none of them installed, `v` says so and does nothing.
+
 ### Credentials
 
 A password typed into the add form is written to a `0600` file for as long as
@@ -701,6 +716,7 @@ metadata arrives. The sizes are the reliable part until then.
 | key | action |
 |---|---|
 | `a` | add a url |
+| `v` | add the urls in the clipboard |
 | `c` | crawl a page |
 | `e` | edit the selected url (restarts it) |
 | `d` / `Del` | delete the selected download |

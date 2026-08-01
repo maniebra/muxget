@@ -427,3 +427,33 @@ fn the_word_filter_hides_rows_and_decides_what_is_queued() {
     let urls: Vec<&str> = app.downloads.iter().map(|d| d.url.as_str()).collect();
     assert_eq!(urls, ["https://y.com/watch?v=a"], "hidden rows are never queued");
 }
+
+#[test]
+fn a_paste_is_previewed_before_anything_is_queued() {
+    use crossterm::event::KeyCode;
+    use muxget::controllers::keys::Dialog;
+
+    let mut app = app_with(&[]);
+    app.queues[0].paused = true;
+
+    app.preview_paste("grab these:\nhttps://a.com/x.iso\nnope\nhttps://a.com/y.iso\n");
+    assert!(matches!(app.dialog, Some(Dialog::Paste(..))), "nothing is queued yet");
+    assert!(app.downloads.is_empty());
+
+    // Everything starts picked; space drops the row the cursor is on.
+    app.on_key(KeyCode::Char(' '));
+    app.on_key(KeyCode::Enter);
+    let urls: Vec<&str> = app.downloads.iter().map(|d| d.url.as_str()).collect();
+    assert_eq!(urls, ["https://a.com/y.iso"]);
+
+    // Esc queues nothing at all.
+    app.preview_paste("https://a.com/z.iso");
+    app.on_key(KeyCode::Esc);
+    assert!(app.dialog.is_none());
+    assert_eq!(app.downloads.len(), 1, "the cancelled paste added nothing");
+
+    // Text with no url says so instead of opening an empty preview.
+    app.preview_paste("just a note");
+    assert!(app.dialog.is_none());
+    assert_eq!(app.message, "no urls in the clipboard");
+}

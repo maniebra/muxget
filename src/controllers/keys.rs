@@ -82,6 +82,9 @@ pub enum Dialog {
     Crawled(Box<Crawl>, Vec<Found>, Vec<usize>, usize),
     /// A listed playlist waiting to be picked from.
     Playlist(Box<Pick>),
+    /// Urls found in the clipboard, waiting to be confirmed: the urls, which
+    /// are picked, and the row the cursor is on.
+    Paste(Vec<String>, Vec<usize>, usize),
 }
 
 /// A playlist listed but not yet queued: its entries, which of them are
@@ -314,6 +317,18 @@ impl App {
                 }
                 self.dialog = Some(Dialog::Playlist(pick));
             }
+            Dialog::Paste(urls, mut picked, mut at) => {
+                match key {
+                    KeyCode::Enter => {
+                        picked.sort_unstable();
+                        self.add_pasted(&urls, &picked);
+                        return;
+                    }
+                    KeyCode::Esc => return,
+                    key => pick_nav(key, urls.len(), &mut picked, &mut at),
+                }
+                self.dialog = Some(Dialog::Paste(urls, picked, at));
+            }
             Dialog::Edit(at, buf) => {
                 if let Some(text) = self.type_into(buf, key, |b| Dialog::Edit(at, b)) {
                     self.edit(at, &text);
@@ -352,6 +367,7 @@ impl App {
             }
             KeyCode::Char('a') => self.dialog = Some(Dialog::Add(Form::default())),
             KeyCode::Char('c') => self.dialog = Some(Dialog::Crawl(Form::default())),
+            KeyCode::Char('v') => self.paste(),
             KeyCode::Char('e') => {
                 if let Some(d) = self.downloads.get(self.selected) {
                     self.dialog = Some(Dialog::Edit(self.selected, d.url.clone()));

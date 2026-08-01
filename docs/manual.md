@@ -530,6 +530,7 @@ queue = "overnight"
 |---|---|
 | `extensions` | file extension, with or without the dot |
 | `domains` | substring of the url |
+| `pattern` | a url pattern whose `*`s are captured for `$1`, `$2` … |
 | `min_size` | total size once known, e.g. `500M`, `5G` |
 | `queue` | queue to route into, created if it does not exist |
 | `directory` | where it lands; `~` is expanded |
@@ -539,6 +540,39 @@ The first matching rule wins, and every condition it sets has to match — a rul
 with both `extensions` and `domains` means "this kind of file, from there".
 Anything typed into the add form beats a rule. A rule that decides nothing is
 ignored rather than silently swallowing its matches.
+
+### Patterns and captures
+
+`pattern` matches a url and remembers what its `*`s covered, so one rule can
+send each thing it matches somewhere of its own:
+
+```toml
+[[rule]]
+pattern = "youtube.com/@*"
+directory = "/home/mani/yt/$1"
+queue = "$1"
+```
+
+`https://youtube.com/@Fireship/videos` then saves under `/home/mani/yt/Fireship`
+and `@mitocw` under `/home/mani/yt/mitocw`, without a rule each. `$1` is the
+first `*`, `$2` the second, and both `queue` and `directory` take them; a queue
+named after a capture is created if it does not exist.
+
+The pattern is found anywhere in the url, the way a domain condition is, and
+matching ignores case while a capture keeps the case it had — it usually ends
+up as a directory name. A `*` stops at `/`, `?` or `#`, so a trailing one takes
+a single path segment rather than the rest of the address. That is what makes
+`youtube.com/@*` give `Fireship` rather than `Fireship/videos`.
+
+These are globs with captures, not regular expressions: `*` is the only
+metacharacter. Nothing else about a rule changes — a pattern can stand alone or
+sit alongside `extensions` and `domains`, and every condition set still has to
+match.
+
+A channel or playlist is routed on its own url before it expands, and the
+directory it lands on is handed to every video it produces. Without that the
+entries would arrive as `watch?v=…` links matching no rule written about a
+channel.
 
 `min_size` cannot be answered before a download starts, so those rules are
 applied once the backend reports a total: the row starts where it was, then

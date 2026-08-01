@@ -215,12 +215,13 @@ fn draw_categories(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
 }
 
 /// What each rule field is for, shown while it is empty.
-const RULE_HINTS: [&str; 6] = [
+const RULE_HINTS: [&str; 7] = [
     "e.g. mp4,mkv",
     "e.g. youtube.com",
+    "e.g. youtube.com/@* — each `*` becomes $1, $2 …",
     "e.g. 500M — routes once the size is known",
-    "queue to send it to",
-    "directory to save it in",
+    "queue to send it to — `$1` allowed",
+    "directory to save it in — `$1` allowed",
     "aria2c | yt-dlp | wget",
 ];
 

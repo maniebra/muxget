@@ -457,3 +457,32 @@ fn a_paste_is_previewed_before_anything_is_queued() {
     assert!(app.dialog.is_none());
     assert_eq!(app.message, "no urls in the clipboard");
 }
+
+#[test]
+fn a_rule_pattern_routes_each_channel_to_its_own_directory() {
+    use muxget::models::rule::Rule;
+
+    let mut app = app_with(&[]);
+    app.queues[0].paused = true;
+    let mut channel = Rule::default();
+    channel.set(2, "youtube.com/@*"); // pattern
+    channel.set(5, "/srv/yt/$1"); // directory
+    let mut project = Rule::default();
+    project.set(2, "example.com/*/");
+    project.set(5, "/srv/$1");
+    app.rules = vec![channel, project];
+
+    // A plain url routes on the way in.
+    app.add("https://example.com/rust/x.iso");
+    app.add("https://other.com/y.iso");
+    let dirs: Vec<&str> = app.downloads.iter().map(|d| d.over.dir.as_str()).collect();
+    assert_eq!(dirs, ["/srv/rust", ""], "one directory per capture");
+
+    // A channel expands into `watch?v=…` entries, which match no rule written
+    // about a channel — so the channel's own routing has to reach them.
+    let mut over = Default::default();
+    let queue = app.route("https://youtube.com/@mitocw/videos", DEFAULT, &mut over);
+    assert_eq!(over.dir, "/srv/yt/mitocw", "decided from the playlist url, not its entries");
+    app.enqueue("https://youtube.com/watch?v=abc", queue, over);
+    assert_eq!(app.downloads[2].over.dir, "/srv/yt/mitocw");
+}

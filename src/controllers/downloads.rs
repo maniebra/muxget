@@ -51,23 +51,27 @@ impl App {
 
     /// Enqueue a url with its own settings; a playlist passes them to every
     /// entry it expands into.
-    pub fn add_with(&mut self, url: &str, over: Overrides) {
+    pub fn add_with(&mut self, url: &str, mut over: Overrides) {
         let url = url.trim();
         if url.is_empty() {
             return;
         }
+        let queue = self.queue().id;
         if ytdlp::expands_playlist(url) {
-            self.expand_playlist(url, over);
+            // Route on the playlist's own url first: its entries are
+            // `watch?v=…` links that match no rule written about a channel,
+            // so a rule's directory has to be decided here and handed down.
+            let queue = self.route(url, queue, &mut over);
+            self.expand_playlist(url, queue, over);
             return;
         }
-        let queue = self.queue().id;
         self.enqueue(url, queue, over);
     }
 
     /// Apply the first rule the url matches: its queue (created if it does not
     /// exist yet), its directory, its backend. Anything the rule leaves out,
     /// and anything typed into the add form, stays as it was.
-    fn route(&mut self, url: &str, queue: usize, over: &mut Overrides) -> usize {
+    pub fn route(&mut self, url: &str, queue: usize, over: &mut Overrides) -> usize {
         // Size rules wait for a total; applying one here would route every
         // download to it, whatever it turns out to weigh.
         let rule = self
@@ -78,16 +82,18 @@ impl App {
         let Some(rule) = rule else {
             return queue;
         };
+        // What the pattern's stars covered, for `$1` in the destinations.
+        let caught = rule.captures(url).unwrap_or_default();
         if over.dir.is_empty() {
             if let Some(dir) = &rule.directory {
-                over.dir = crate::utils::expand_home(dir);
+                over.dir = crate::utils::expand_home(&rule.fill(dir, &caught));
             }
         }
         if let Some(name) = &rule.backend {
             over.backend = name.clone();
         }
         match &rule.queue {
-            Some(name) => self.queue_named(name),
+            Some(name) => self.queue_named(&rule.fill(name, &caught)),
             None => queue,
         }
     }
@@ -123,7 +129,7 @@ impl App {
     }
 
     /// Add one url to `queue`. It starts as soon as that queue has a slot.
-    pub(crate) fn enqueue(&mut self, url: &str, queue: usize, mut over: Overrides) {
+    pub fn enqueue(&mut self, url: &str, queue: usize, mut over: Overrides) {
         let queue = self.route(url, queue, &mut over);
         let Some(backend) = backend_for(url, &over) else {
             self.message = format!("no backend accepts {url}");
@@ -183,8 +189,7 @@ impl App {
 
     /// List a playlist's entries off-thread; each one arrives as `Discovered`,
     /// or the whole list as `Listed` when the user wants to pick from it.
-    fn expand_playlist(&mut self, url: &str, over: Overrides) {
-        let queue = self.queue().id;
+    fn expand_playlist(&mut self, url: &str, queue: usize, over: Overrides) {
         let confirm = self.confirm_playlist;
         self.list_playlist(
             Listing { url: url.to_string(), queue, over, ..Default::default() },

@@ -59,3 +59,46 @@ fn every_set_condition_has_to_match() {
     assert!(!both[0].matches("https://elsewhere.net/a.iso"));
     assert!(!both[0].matches("https://mirror.net/a.zip"));
 }
+
+#[test]
+fn a_pattern_captures_what_its_stars_cover() {
+    use muxget::models::rule::capture;
+
+    // The case that asked for this: one rule, a directory per channel.
+    let caught = capture("youtube.com/@*", "https://youtube.com/@Fireship").unwrap();
+    assert_eq!(caught, ["Fireship"]);
+    // A star stops at the separator, so the rest of the url is not swallowed.
+    let caught = capture("youtube.com/@*", "https://youtube.com/@Fireship/videos").unwrap();
+    assert_eq!(caught, ["Fireship"]);
+    // Case is ignored while matching and kept in what comes back.
+    assert_eq!(capture("YOUTUBE.COM/@*", "https://youtube.com/@MIT").unwrap(), ["MIT"]);
+
+    // Several stars are numbered left to right.
+    let caught = capture("://*/*/releases/", "https://gh.io/rust-lang/releases/1.0").unwrap();
+    assert_eq!(caught, ["gh.io", "rust-lang"]);
+
+    // A pattern that is not in the url matches nothing.
+    assert!(capture("youtube.com/@*", "https://vimeo.com/12345").is_none());
+    // Neither does one whose star would have to cross a separator.
+    assert!(capture("example.com/*.iso", "https://example.com/a/b.iso").is_none());
+}
+
+#[test]
+fn a_capture_fills_the_destination_in() {
+    use muxget::models::rule::Rule;
+
+    let mut rule = Rule::default();
+    rule.set(2, "youtube.com/@*");
+    rule.set(5, "/home/mani/yt/$1");
+    rule.set(4, "$1");
+
+    let url = "https://youtube.com/@Fireship/videos";
+    assert!(rule.matches(url), "a rule may be nothing but a pattern");
+    let caught = rule.captures(url).unwrap();
+    assert_eq!(rule.fill(&rule.get(5), &caught), "/home/mani/yt/Fireship");
+    assert_eq!(rule.fill(&rule.get(4), &caught), "Fireship", "queues take one too");
+
+    assert!(!rule.matches("https://youtube.com/watch?v=abc"), "no channel, no match");
+    // And the rule survives the file.
+    assert_eq!(muxget::models::rule::parse(&muxget::models::rule::render(&[rule.clone()])), [rule]);
+}

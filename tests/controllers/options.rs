@@ -285,7 +285,7 @@ mod categories {
         assert_eq!(p.rules[0].extensions, ["mp4", "mkv"], "dots and case are cleaned up");
 
         // The destination fields are plain text.
-        p.cursor = 4; // queue
+        p.cursor = 5; // queue
         p.on_key(KeyCode::Enter);
         typed(&mut p, "video");
         p.on_key(KeyCode::Enter);
@@ -310,10 +310,11 @@ mod categories {
         let mut rule = Rule::default();
         rule.set(0, "mp4, mkv");
         rule.set(1, "YouTube.com");
-        rule.set(2, "500M");
-        rule.set(3, "video");
-        rule.set(4, "/tmp/video");
-        rule.set(5, "yt-dlp");
+        rule.set(2, "youtube.com/@*");
+        rule.set(3, "500M");
+        rule.set(4, "video");
+        rule.set(5, "/tmp/video");
+        rule.set(6, "yt-dlp");
 
         let back = rule::parse(&rule::render(&[rule.clone()]));
         assert_eq!(back, vec![rule], "what the panel writes is what it reads");

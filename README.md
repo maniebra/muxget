@@ -212,11 +212,22 @@ queue = "media"
 [[rule]]
 min_size = "5G"
 queue = "overnight"
+
+[[rule]]
+# each `*` is captured for `$1`, `$2` … in the queue and directory
+pattern = "youtube.com/@*"
+directory = "/home/mani/yt/$1"
 ```
 
 The first matching rule wins, and every condition it sets has to match — a rule
 with both `extensions` and `domains` means "this kind of file, from there".
 Anything typed into the add form beats a rule.
+
+A `pattern` gives one rule a destination per url: `@Fireship` saves under
+`/home/mani/yt/Fireship` and `@mitocw` under `/home/mani/yt/mitocw`. A `*` stops
+at `/`, `?` or `#`, matching ignores case, and a capture keeps the case it had.
+These are globs with captures, not regular expressions. A channel is routed
+before it expands, so every video it produces inherits the directory.
 
 `min_size` cannot be answered before the download starts, so those rules are
 applied once the backend reports a total and the download moves queue then.

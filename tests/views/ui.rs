@@ -87,7 +87,7 @@ fn the_categories_tab_unfolds_each_rule_into_its_fields() {
     let mut app = App::with_queues(".".into(), vec![Queue::new(DEFAULT, "default", 3)]);
     let mut rule = Rule::default();
     rule.set(0, "mkv");
-    rule.set(3, "video");
+    rule.set(4, "video");
     app.settings = Some(Settings::open(3, "aria2c", vec![rule]));
 
     let mut term = Terminal::new(TestBackend::new(100, 24)).unwrap();

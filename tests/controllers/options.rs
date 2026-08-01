@@ -190,6 +190,8 @@ mod settings {
         assert_eq!(p.cursor, 0, "each tab starts at the top");
 
         p.on_key(KeyCode::Tab);
+        assert_eq!(TABS[p.tab], "crawler");
+        p.on_key(KeyCode::Tab);
         assert_eq!(TABS[p.tab], "categories");
         p.on_key(KeyCode::Tab);
         assert_eq!(TABS[p.tab], "general", "wraps around");

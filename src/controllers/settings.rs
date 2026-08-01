@@ -61,9 +61,10 @@ impl App {
     /// Close the settings panel, saving the backend form it was showing.
     pub fn close_settings(&mut self) {
         let Some(panel) = self.settings.take() else { return };
-        self.message = match panel.options.save() {
+        // Both forms are files, and both are written on the way out.
+        self.message = match panel.options.save().and(panel.crawl.save()) {
             Ok(()) => format!("{} options saved", panel.options.backend),
-            Err(e) => format!("could not save {} options: {e}", panel.options.backend),
+            Err(e) => format!("could not save options: {e}"),
         };
     }
 }

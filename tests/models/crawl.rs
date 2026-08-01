@@ -184,3 +184,36 @@ fn the_options_field_reads_as_words() {
     // The other spelling of the same switch.
     assert!(form("ignore-robots").ignore_robots);
 }
+
+#[test]
+fn the_crawler_tab_supplies_the_defaults_a_form_can_override() {
+    use muxget::controllers::crawl::{defaults, from_form};
+    use muxget::controllers::keys::Form;
+    use muxget::utils::args;
+
+    std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir().join("muxget-crawl-tab"));
+    args::save("crawl", "depth=4\nextensions=mp4,pdf\nany-domain\nno-robots").unwrap();
+
+    let saved = defaults();
+    assert_eq!(saved.depth, 4);
+    assert_eq!(saved.exts, ["mp4", "pdf"]);
+    assert!(!saved.same_domain && saved.ignore_robots);
+    assert!(!saved.under_path && !saved.flat, "what the file omits stays off");
+
+    // An empty form is the saved crawl, with only the url filled in.
+    let mut form = Form::default();
+    form.fields[0] = "https://x.com/docs/".into();
+    let crawl = from_form(&form);
+    assert_eq!((crawl.depth, crawl.exts.len()), (4, 2));
+    assert!(!crawl.same_domain && crawl.ignore_robots);
+
+    // A typed field wins, and the opposite word turns a saved switch back off.
+    form.fields[1] = "2".into();
+    form.fields[2] = "zip".into();
+    form.fields[6] = "same-domain robots flat".into();
+    let crawl = from_form(&form);
+    assert_eq!((crawl.depth, crawl.exts.as_slice()), (2, ["zip".to_string()].as_slice()));
+    assert!(crawl.same_domain && !crawl.ignore_robots && crawl.flat);
+
+    args::save("crawl", "").unwrap();
+}

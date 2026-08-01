@@ -218,10 +218,12 @@ within one, `Esc` closes.
 - **backends** — a form over the common aria2c, yt-dlp and wget options:
   `Enter` toggles a switch or edits a value, `b` switches backend, `x` unsets
   one.
+- **crawler** — the defaults the crawl dialog opens with: depth, extensions,
+  size range, and the off-host / under-path / no-robots / flat switches.
 - **categories** — the routing rules as they will be applied.
 
 Everything is stored as plain flags in `~/.config/muxget/aria2c.args`,
-`yt-dlp.args` and `wget.args`, passed to the tool verbatim and appended last, so they override
+`yt-dlp.args`, `wget.args` and `crawl.args`, passed to the tool verbatim and appended last, so they override
 muxget's own defaults. Flags the panel has no entry for are kept untouched, so
 hand-editing those files works alongside the UI:
 

@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Cell, Clear, Padding, Paragraph, Row, Table, Table
 use ratatui::Frame;
 
 use crate::controllers::app::App;
-use crate::controllers::options::{Settings, GENERAL, TABS};
+use crate::controllers::options::{Options, Settings, GENERAL, TABS};
 use crate::models::option::Kind;
 use crate::utils::{args, config_dir};
 
@@ -25,12 +25,14 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_tabs(f, app, panel, tabs);
     match panel.tab {
         0 => draw_general(f, app, panel, body),
-        1 => draw_backend(f, app, panel, body),
+        1 => draw_form(f, app, panel, &panel.options, body),
+        2 => draw_form(f, app, panel, &panel.crawl, body),
         _ => draw_categories(f, app, body),
     }
 
     let path = match panel.tab {
         1 => args::path(panel.options.backend),
+        2 => args::path("crawl"),
         _ => config_dir().join("rules"),
     };
     f.render_widget(
@@ -103,9 +105,8 @@ fn draw_general(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
     render_table(f, app, panel.cursor, rows, [Constraint::Length(24), Constraint::Min(20)], area);
 }
 
-fn draw_backend(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
+fn draw_form(f: &mut Frame, app: &App, panel: &Settings, opts: &Options, area: Rect) {
     let t = &app.theme;
-    let opts = &panel.options;
     let rows = opts.specs().iter().enumerate().map(|(i, spec)| {
         let editing = opts.editing.as_ref().filter(|_| i == panel.cursor);
         let (mark, value, color) = match (&spec.kind, opts.value(spec.flag), editing) {
@@ -223,8 +224,9 @@ fn render_table<'a>(
 }
 
 fn hints<'a>(panel: &Settings, t: &crate::views::theme::Theme) -> Line<'a> {
-    let keys: &[(&str, &str)] = match (panel.tab, panel.options.editing.is_some()) {
-        (1, true) => &[("Enter", "set"), ("Esc", "cancel"), ("empty", "unset")],
+    let editing = panel.options.editing.is_some() || panel.crawl.editing.is_some();
+    let keys: &[(&str, &str)] = match (panel.tab, editing) {
+        (1 | 2, true) => &[("Enter", "set"), ("Esc", "cancel"), ("empty", "unset")],
         (0, _) => &[
             ("Tab", "next tab"),
             ("j/k", "move"),
@@ -236,6 +238,13 @@ fn hints<'a>(panel: &Settings, t: &crate::views::theme::Theme) -> Line<'a> {
             ("j/k", "move"),
             ("Enter", "toggle / edit"),
             ("b", "backend"),
+            ("x", "unset"),
+            ("Esc", "save & close"),
+        ],
+        (2, _) => &[
+            ("Tab", "next tab"),
+            ("j/k", "move"),
+            ("Enter", "toggle / edit"),
             ("x", "unset"),
             ("Esc", "save & close"),
         ],

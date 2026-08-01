@@ -173,9 +173,12 @@ pub struct Settings {
     pub tab: usize,
     pub cursor: usize,
     pub options: Options,
+    /// The crawler tab: the same form over `crawl.args`, which holds the
+    /// defaults the crawl dialog opens with.
+    pub crawl: Options,
 }
 
-pub const TABS: [&str; 3] = ["general", "backends", "categories"];
+pub const TABS: [&str; 4] = ["general", "backends", "crawler", "categories"];
 pub const GENERAL: [&str; 4] =
     ["theme", "download directory", "nerd font icons", "confirm before dl playlist"];
 
@@ -194,13 +197,28 @@ pub enum Action {
 
 impl Settings {
     pub fn open(tab: usize, backend: &'static str) -> Settings {
-        Settings { tab, cursor: 0, options: Options::open(backend) }
+        Settings {
+            tab,
+            cursor: 0,
+            options: Options::open(backend),
+            crawl: Options::open("crawl"),
+        }
+    }
+
+    /// The form the current tab shows, if it is one of the two that has one.
+    pub fn form(&mut self) -> Option<&mut Options> {
+        match self.tab {
+            1 => Some(&mut self.options),
+            2 => Some(&mut self.crawl),
+            _ => None,
+        }
     }
 
     pub fn rows(&self) -> usize {
         match self.tab {
             0 => GENERAL.len(),
             1 => self.options.specs().len(),
+            2 => self.crawl.specs().len(),
             _ => 0,
         }
     }
@@ -217,10 +235,11 @@ impl Settings {
     }
 
     pub fn on_key(&mut self, key: KeyCode) -> Action {
-        // The backend form owns the keyboard while a value is being typed.
-        if self.tab == 1 && self.options.editing.is_some() {
-            self.options.cursor = self.cursor;
-            self.options.on_key(key);
+        // A form owns the keyboard while a value is being typed into it.
+        let cursor = self.cursor;
+        if let Some(form) = self.form().filter(|f| f.editing.is_some()) {
+            form.cursor = cursor;
+            form.on_key(key);
             return Action::None;
         }
         match key {
@@ -257,9 +276,12 @@ impl Settings {
                 let _ = self.set_backend(next);
                 Action::None
             }
-            (1, _, key) => {
-                self.options.cursor = self.cursor;
-                self.options.on_key(key);
+            (1 | 2, _, key) => {
+                let cursor = self.cursor;
+                if let Some(form) = self.form() {
+                    form.cursor = cursor;
+                    form.on_key(key);
+                }
                 Action::None
             }
             _ => Action::None,

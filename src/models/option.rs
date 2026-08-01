@@ -89,10 +89,24 @@ pub const WGET: &[OptSpec] = &[
     OptSpec { flag: "--no-check-certificate", label: "skip certificate checks", kind: Flag, hint: "" },
 ];
 
+/// Defaults for the crawl form, stored the same way a backend's flags are.
+/// These are not passed to wget: a crawl's own words override them, and
+/// `controllers::crawl` turns the result into flags.
+pub const CRAWL: &[OptSpec] = &[
+    OptSpec { flag: "depth", label: "depth", kind: Value, hint: "how many links deep" },
+    OptSpec { flag: "extensions", label: "extensions", kind: Value, hint: "e.g. pdf,mp4" },
+    OptSpec { flag: "size", label: "size min-max", kind: Value, hint: "e.g. 1M-500M" },
+    OptSpec { flag: "any-domain", label: "follow links off the host", kind: Flag, hint: "" },
+    OptSpec { flag: "under-path", label: "stay under the start url", kind: Flag, hint: "" },
+    OptSpec { flag: "no-robots", label: "ignore robots.txt and nofollow", kind: Flag, hint: "" },
+    OptSpec { flag: "flat", label: "save without the directory tree", kind: Flag, hint: "" },
+];
+
 pub fn specs(backend: &str) -> &'static [OptSpec] {
     match backend {
         "aria2c" => ARIA2,
         "wget" => WGET,
+        "crawl" => CRAWL,
         _ => YTDLP,
     }
 }

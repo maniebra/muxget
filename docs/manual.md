@@ -355,6 +355,11 @@ minute-resolution window needs.
 | size min-max | `1M-500M` |
 | options | `any-domain`, `under-path`, `no-robots`, `flat`, `offline` |
 
+Every field except the url may be left empty, in which case it takes its value
+from settings › crawler. Each switch has an opposite word — `same-domain`,
+`any-path`, `robots`, `nested` — so a single crawl can go against a saved
+default without changing it. `offline` is per-crawl only.
+
 Patterns are comma separated. One containing `*` is matched as a glob and
 anchored at both ends; one without is matched as a substring, which is usually
 what a typed filter means. Excludes win over includes. A file the server gives
@@ -493,6 +498,7 @@ check what the file parsed into.
 
 - **general** — theme, download directory, nerd font icons, confirm before dl playlist.
 - **backends** — a form over the common aria2c, yt-dlp and wget options.
+- **crawler** — the defaults the crawl dialog opens with: depth, extensions, size range, and the four switches.
 - **categories** — the routing rules as they will be applied.
 
 Backend options are stored as plain flags, one file per backend:
@@ -555,6 +561,7 @@ Everything lives in `$XDG_CONFIG_HOME/muxget`, or `~/.config/muxget`.
 | `theme` | the remembered theme name |
 | `rules` | routing rules |
 | `aria2c.args`, `yt-dlp.args`, `wget.args` | backend flags |
+| `crawl.args` | crawl defaults, from the crawler tab |
 | `themes/*.toml` | your own themes |
 | `creds/` | one `0600` credentials file per running download |
 

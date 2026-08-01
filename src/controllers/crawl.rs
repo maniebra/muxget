@@ -4,6 +4,7 @@ use crate::controllers::app::App;
 use crate::controllers::keys::{Dialog, Form};
 use crate::models::crawl::{self, Crawl, Found};
 use crate::models::download::{Overrides, Update};
+use crate::utils::args;
 use crate::utils::parse::{for_each_line, human};
 
 /// The crawl form's fields, in display order.
@@ -17,34 +18,83 @@ pub const CRAWL_LABELS: [&str; 7] = [
     "options",
 ];
 
-/// Build a crawl from what was typed. Anything unparseable falls back to the
-/// default rather than refusing the whole form.
-pub fn from_form(form: &Form) -> Crawl {
-    let list = |s: &str| {
-        s.split(',')
-            .map(|p| p.trim().trim_start_matches('.').to_lowercase())
-            .filter(|p| !p.is_empty())
-            .collect::<Vec<String>>()
+/// The crawl the form opens with: the settings panel's crawler tab, or the
+/// built-in defaults where it says nothing.
+pub fn defaults() -> Crawl {
+    let saved = args::to_pairs(&args::load("crawl"));
+    let set = |flag: &str| saved.iter().any(|(f, _)| f == flag);
+    let value = |flag: &str| {
+        saved.iter().find(|(f, _)| f == flag).map(|(_, v)| v.clone()).unwrap_or_default()
     };
-    let options = form.fields[6].to_lowercase();
-    let (min, max) = form.fields[5].split_once('-').unwrap_or((&form.fields[5], ""));
     let base = Crawl::default();
+    let (min, max) = split_size(&value("size"));
+    Crawl {
+        depth: value("depth").trim().parse().unwrap_or(base.depth),
+        exts: list(&value("extensions")),
+        min_size: min,
+        max_size: max,
+        same_domain: !set("any-domain"),
+        under_path: set("under-path"),
+        ignore_robots: set("no-robots"),
+        flat: set("flat"),
+        ..base
+    }
+}
+
+/// Comma-separated extensions, without their dots.
+fn list(text: &str) -> Vec<String> {
+    text.split(',')
+        .map(|p| p.trim().trim_start_matches('.').to_lowercase())
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
+fn split_size(text: &str) -> (Option<f64>, Option<f64>) {
+    let (min, max) = text.split_once('-').unwrap_or((text, ""));
+    (crate::utils::parse::bytes(min), crate::utils::parse::bytes(max))
+}
+
+/// Build a crawl from what was typed. A field left empty keeps the default
+/// from the crawler tab, and anything unparseable falls back to it too.
+pub fn from_form(form: &Form) -> Crawl {
+    let options = form.fields[6].to_lowercase();
+    let base = defaults();
+    // A word turns its setting on, and the opposite word turns it back off,
+    // so one crawl can go against the saved default either way.
+    let word = |on: &str, off: &str, default: bool| match (
+        options.split_whitespace().any(|w| w == on),
+        options.split_whitespace().any(|w| w == off),
+    ) {
+        (true, false) => true,
+        (false, true) => false,
+        _ => default,
+    };
+    let (min, max) = match form.fields[5].trim().is_empty() {
+        true => (base.min_size, base.max_size),
+        false => split_size(&form.fields[5]),
+    };
     Crawl {
         url: form.fields[0].trim().to_string(),
         depth: form.fields[1].trim().parse().unwrap_or(base.depth),
-        exts: list(&form.fields[2]),
+        exts: match form.fields[2].trim().is_empty() {
+            true => base.exts.clone(),
+            false => list(&form.fields[2]),
+        },
         // Patterns are matched as typed; only extensions are dot-stripped.
         include: form.fields[3].split(',').map(|p| p.trim().to_lowercase()).filter(|p| !p.is_empty()).collect(),
         exclude: form.fields[4].split(',').map(|p| p.trim().to_lowercase()).filter(|p| !p.is_empty()).collect(),
-        min_size: crate::utils::parse::bytes(min),
-        max_size: crate::utils::parse::bytes(max),
-        // Staying on the domain is the default; the word turns it off.
-        same_domain: !options.contains("any-domain"),
-        under_path: options.contains("under-path"),
-        flat: options.contains("flat"),
-        // `no-robots` reads as the switch it is; `ignore-robots` is what
-        // people type when they do not remember which.
-        ignore_robots: options.contains("no-robots") || options.contains("ignore-robots"),
+        min_size: min,
+        max_size: max,
+        same_domain: !word("any-domain", "same-domain", !base.same_domain),
+        under_path: word("under-path", "any-path", base.under_path),
+        flat: word("flat", "nested", base.flat),
+        // `ignore-robots` is what people type when they do not remember
+        // which of the two it is.
+        ignore_robots: match options.contains("ignore-robots") {
+            true => true,
+            false => word("no-robots", "robots", base.ignore_robots),
+        },
+        // A mirror is a decision about this crawl, not a saved default.
         offline: options.contains("offline"),
     }
 }

@@ -240,14 +240,16 @@ fn form_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
 
 /// The crawl form. Same widget, different labels — and no secrets in it.
 fn crawl_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
+    // An empty field means the crawler tab's default, so say so rather than
+    // naming a built-in that the settings may have replaced.
     let hints = [
         "the page to crawl",
-        "1 — how many links deep to follow",
-        "every type — e.g. pdf,zip,mp3",
+        "how many links deep — settings › crawler",
+        "e.g. pdf,zip,mp3 — settings › crawler",
         "everything — url patterns, `*` allowed",
         "nothing — url patterns to skip",
-        "any size — e.g. 1M-500M",
-        "same-domain · add: any-domain, under-path, no-robots, flat, offline",
+        "e.g. 1M-500M — settings › crawler",
+        "offline · any-domain/same-domain, under-path/any-path, no-robots/robots, flat/nested",
     ];
     fields(t, form, &CRAWL_LABELS, &hints, &[false; 7])
 }

@@ -123,12 +123,33 @@ fn the_mirror_flags_cover_an_offline_copy() {
         "--timestamping",
         "--backup-converted",
         "--no-if-modified-since",
-        "--no-parent",
         "--domains=x.com",
     ] {
         assert!(args.contains(flag), "{flag} missing from {args}");
     }
     assert!(!args.contains("--no-directories"), "structure is kept by default");
     assert!(Crawl { flat: true, ..crawl.clone() }.mirror_args().join(" ").contains("--no-directories"));
-    assert!(Crawl { same_domain: false, ..crawl }.mirror_args().join(" ").contains("--span-hosts"));
+    assert!(Crawl { same_domain: false, ..crawl.clone() }.mirror_args().join(" ").contains("--span-hosts"));
+    assert!(Crawl { under_path: true, ..crawl }.mirror_args().join(" ").contains("--no-parent"));
+}
+
+#[test]
+fn the_spider_stays_on_the_host_without_being_trapped_under_the_start_path() {
+    // The bug this guards: `--no-parent` on a page whose files live in a
+    // sibling directory makes wget reject every link and find nothing.
+    let crawl = Crawl {
+        url: "https://x.com/courses/algo/video_galleries/lectures/".into(),
+        exts: vec!["mp4".into()],
+        ..Default::default()
+    };
+    let args = format!("{:?}", crawl.spider_command());
+    assert!(args.contains("--domains=x.com"), "the host is still the boundary");
+    assert!(!args.contains("--no-parent"), "siblings of the start page are reachable");
+
+    let under = Crawl { under_path: true, ..crawl.clone() };
+    assert!(format!("{:?}", under.spider_command()).contains("--no-parent"), "opt-in still works");
+
+    let anywhere = Crawl { same_domain: false, ..crawl };
+    let args = format!("{:?}", anywhere.spider_command());
+    assert!(args.contains("--span-hosts") && !args.contains("--domains="));
 }

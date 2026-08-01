@@ -40,6 +40,7 @@ pub fn from_form(form: &Form) -> Crawl {
         max_size: crate::utils::parse::bytes(max),
         // Staying on the domain is the default; the word turns it off.
         same_domain: !options.contains("any-domain"),
+        under_path: options.contains("under-path"),
         flat: options.contains("flat"),
         offline: options.contains("offline"),
     }

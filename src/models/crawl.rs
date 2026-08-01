@@ -17,8 +17,13 @@ pub struct Crawl {
     pub exclude: Vec<String>,
     pub min_size: Option<f64>,
     pub max_size: Option<f64>,
-    /// Stay on the page's own host and below its path.
+    /// Stay on the page's own host. Other hosts are neither followed nor
+    /// offered.
     pub same_domain: bool,
+    /// Also stay at or below the start url's path. Off by default: a page's
+    /// files usually sit in a sibling directory, not under it, and wget
+    /// stops dead at the first link that climbs one level.
+    pub under_path: bool,
     /// Drop the url's directories and save everything side by side.
     pub flat: bool,
     /// Mirror the site for offline reading — pages plus the stylesheets,
@@ -45,6 +50,7 @@ impl Default for Crawl {
             min_size: None,
             max_size: None,
             same_domain: true,
+            under_path: false,
             flat: false,
             offline: false,
         }
@@ -65,12 +71,14 @@ impl Crawl {
         ];
         match self.same_domain {
             true => {
-                args.push("--no-parent".into());
                 if let Some(host) = host(&self.url) {
                     args.push(format!("--domains={host}"));
                 }
             }
             false => args.push("--span-hosts".into()),
+        }
+        if self.under_path {
+            args.push("--no-parent".into());
         }
         if !self.exts.is_empty() {
             args.push(format!("--accept={}", self.exts.join(",")));

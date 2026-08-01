@@ -247,7 +247,7 @@ fn crawl_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
         "everything — url patterns, `*` allowed",
         "nothing — url patterns to skip",
         "any size — e.g. 1M-500M",
-        "same-domain · add: any-domain, flat, offline",
+        "same-domain · add: any-domain, under-path, flat, offline",
     ];
     fields(t, form, &CRAWL_LABELS, &hints, &[false; 7])
 }

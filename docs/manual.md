@@ -333,15 +333,19 @@ minute-resolution window needs.
 | include | url patterns to keep |
 | exclude | url patterns to drop |
 | size min-max | `1M-500M` |
-| options | `any-domain`, `flat`, `offline` |
+| options | `any-domain`, `under-path`, `flat`, `offline` |
 
 Patterns are comma separated. One containing `*` is matched as a glob and
 anchored at both ends; one without is matched as a substring, which is usually
 what a typed filter means. Excludes win over includes. A file the server gives
 no size for is kept — an unknown size is not a reason to drop something.
 
-By default a crawl stays on the page's own host and below its path.
-`any-domain` lets it follow links anywhere.
+By default a crawl stays on the page's own host, but is free to walk the whole
+host: a gallery page usually links to sibling directories rather than to things
+underneath it, so restricting the crawl to the start url's own path makes it
+stop at the first page. `under-path` restricts it that way when that is what
+you want, and `any-domain` lets it follow links to other hosts — needed when a
+site hands its media off to a CDN or an archive, as MIT OpenCourseWare does.
 
 ### Discovering links
 

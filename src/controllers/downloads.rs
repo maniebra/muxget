@@ -676,6 +676,15 @@ impl App {
         self.clamp_selection();
     }
 
+    /// Put the cursor on the nth row on screen, counting from 0 and clamped
+    /// to the last one — `usize::MAX` is "the bottom".
+    pub fn goto_row(&mut self, n: usize) {
+        let rows = self.visible();
+        if let Some(at) = rows.get(n.min(rows.len().saturating_sub(1))) {
+            self.selected = *at;
+        }
+    }
+
     /// Indices of the downloads shown: the current queue, current filter.
     pub fn visible(&self) -> Vec<usize> {
         let queue = self.queue().id;

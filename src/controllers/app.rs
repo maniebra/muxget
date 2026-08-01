@@ -3,6 +3,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyEventKind};
+use ratatui::layout::Rect;
 use ratatui::DefaultTerminal;
 
 use crate::controllers::downloads::Filter;
@@ -36,6 +37,11 @@ pub struct App {
     pub marked: Vec<usize>,
     /// Where the last mark was made, so a range has somewhere to start.
     pub anchor: Option<usize>,
+    /// Digits typed before a movement key, vim style: `5j`.
+    pub count: Option<usize>,
+    /// Rows the list can show, so `Ctrl-d` and friends know what a page is.
+    /// Measured from the real layout on every keypress.
+    pub page: usize,
     pub theme: Theme,
     /// Use nerd font glyphs for status icons.
     pub nerd: bool,
@@ -103,6 +109,8 @@ impl App {
             current: 0,
             marked: Vec::new(),
             anchor: None,
+            count: None,
+            page: 10,
             next_id: 0,
             next_queue_id,
             theme: Theme::saved().unwrap_or_default(),
@@ -129,7 +137,11 @@ impl App {
             }
             match event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
-                    if self.on_key(key.code) {
+                    // How far a page is, for the keys that move by one.
+                    let area = terminal.size()?;
+                    let list = views::ui::layout(Rect::new(0, 0, area.width, area.height)).list;
+                    self.page = list.height.saturating_sub(3).max(1) as usize;
+                    if self.on_key_event(key) {
                         break;
                     }
                 }

@@ -60,7 +60,10 @@ the saved values for that run only.
 | `p` | pause / resume the selection |
 | `P` | pause / resume every queue |
 | `x` | stop the selection, keep the rows |
-| `j` / `k` | move the selection |
+| `j` / `k` | move the cursor; a count works, `5j` |
+| `gg` / `G` | first / last row, or `5G` for the fifth |
+| `Ctrl-d` / `Ctrl-u` | half a screen down / up |
+| `Ctrl-f` / `Ctrl-b` | a whole screen down / up |
 | `J` / `K` | move the download within its queue |
 | `s` | settings |
 | `Tab` | cycle filter: all / active / done / failed |

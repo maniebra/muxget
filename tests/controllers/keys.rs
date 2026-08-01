@@ -300,3 +300,44 @@ fn selection_marks_rows_and_operations_act_on_them() {
     assert_eq!(ids, [0, 2], "the marked ids are gone, the rest kept");
     assert!(app.selected < app.downloads.len(), "the cursor stays in bounds");
 }
+
+#[test]
+fn vim_movements_walk_the_list() {
+    use crossterm::event::{KeyEvent, KeyModifiers};
+
+    let rows: Vec<Status> = (0..9).map(|_| Status::Running).collect();
+    let mut app = app_with(&rows);
+    app.page = 4;
+
+    // A count repeats the movement.
+    typed(&mut app, "3j");
+    assert_eq!(app.selected, 3);
+    typed(&mut app, "2k");
+    assert_eq!(app.selected, 1);
+    // Counts are for the command right after them and no further.
+    typed(&mut app, "j");
+    assert_eq!(app.selected, 2, "the earlier count is spent");
+
+    // `G` is the bottom, `NG` the nth row, `gg` the top.
+    app.on_key(KeyCode::Char('G'));
+    assert_eq!(app.selected, 8);
+    typed(&mut app, "4G");
+    assert_eq!(app.selected, 3);
+    typed(&mut app, "gg");
+    assert_eq!(app.selected, 0, "a count survives the `g` of a sequence");
+    typed(&mut app, "7gg");
+    assert_eq!(app.selected, 6);
+
+    // Paging is measured in rows the list can show.
+    let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+    app.on_key_event(ctrl('u'));
+    assert_eq!(app.selected, 4, "half a page up");
+    app.on_key_event(ctrl('f'));
+    assert_eq!(app.selected, 8, "a whole page down, clamped at the end");
+    app.on_key_event(ctrl('b'));
+    assert_eq!(app.selected, 4);
+
+    // Control chords are not the plain keys: `d` alone still asks to delete.
+    app.on_key(KeyCode::Char('d'));
+    assert!(app.dialog.is_some());
+}

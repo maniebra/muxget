@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Rect, Size};
 
 use crate::controllers::app::App;
@@ -152,6 +152,7 @@ pub const QUEUE_MENU: &[MenuItem] = &[
     MenuItem { key: 'p', label: "pause / resume this queue" },
     MenuItem { key: 't', label: "schedule (window, days, quota…)" },
     MenuItem { key: 'P', label: "pause / resume every queue" },
+    MenuItem { key: 'g', label: "first row" },
     MenuItem { key: 'j', label: "next queue" },
     MenuItem { key: 'k', label: "previous queue" },
     MenuItem { key: '>', label: "move this queue right" },
@@ -188,6 +189,28 @@ fn char_of(key: KeyCode) -> Option<char> {
 /// Keyboard routing: panel, then half-typed sequence, then dialog, then the
 /// normal keymap. Each layer owns the keyboard while it is active.
 impl App {
+    /// One key with its modifiers. Only the control chords need them, and
+    /// only in the list — a dialog takes the plain key as it always has.
+    pub fn on_key_event(&mut self, ev: KeyEvent) -> bool {
+        let plain = self.dialog.is_none() && self.settings.is_none() && self.pending.is_none();
+        if plain && ev.modifiers.contains(KeyModifiers::CONTROL) {
+            let page = self.page as isize;
+            match ev.code {
+                // vim's paging: half a screen, then a whole one.
+                KeyCode::Char('d') => self.move_selection(page / 2),
+                KeyCode::Char('u') => self.move_selection(-page / 2),
+                KeyCode::Char('f') => self.move_selection(page),
+                KeyCode::Char('b') => self.move_selection(-page),
+                _ => {}
+            }
+            if matches!(ev.code, KeyCode::Char('d' | 'u' | 'f' | 'b')) {
+                self.count = None;
+                return false;
+            }
+        }
+        self.on_key(ev.code)
+    }
+
     /// Handle one keypress. Returns true when the app should quit.
     pub fn on_key(&mut self, key: KeyCode) -> bool {
         if let Some(panel) = &mut self.settings {
@@ -371,7 +394,21 @@ impl App {
         }
     }
 
+    /// The count typed before a movement, and gone once it is used. `0` only
+    /// counts when a count is already going, so it stays free for a `0` key.
+    fn take_count(&mut self) -> usize {
+        self.count.take().unwrap_or(1)
+    }
+
     fn on_normal_key(&mut self, key: KeyCode) -> bool {
+        // Digits build a count for the next movement rather than acting.
+        if let KeyCode::Char(c @ '0'..='9') = key {
+            let digit = c as usize - '0' as usize;
+            if digit > 0 || self.count.is_some() {
+                self.count = Some(self.count.unwrap_or(0) * 10 + digit);
+                return false;
+            }
+        }
         match key {
             KeyCode::Char('q') => return true,
             KeyCode::Char(c @ ('g' | 'i' | 'Z')) => self.pending = Some(c),
@@ -401,8 +438,20 @@ impl App {
             KeyCode::Char('x') => self.on_targets(|app, at| app.cancel(at)),
             KeyCode::Char(']') | KeyCode::Right => self.cycle_queue(1),
             KeyCode::Char('[') | KeyCode::Left => self.cycle_queue(-1),
-            KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
-            KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
+            KeyCode::Down | KeyCode::Char('j') => {
+                let n = self.take_count() as isize;
+                self.move_selection(n);
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                let n = self.take_count() as isize;
+                self.move_selection(-n);
+            }
+            // `G` alone is the last row, `5G` the fifth.
+            KeyCode::Char('G') | KeyCode::End => match self.count.take() {
+                Some(n) => self.goto_row(n.saturating_sub(1)),
+                None => self.goto_row(usize::MAX),
+            },
+            KeyCode::Home => self.goto_row(0),
             // Order is priority, so this is how a row is promoted.
             KeyCode::Char('J') => self.move_download(1),
             KeyCode::Char('K') => self.move_download(-1),
@@ -411,6 +460,11 @@ impl App {
                 self.set_filter(Filter::ALL[(i + 1) % Filter::ALL.len()]);
             }
             _ => {}
+        }
+        // A count belongs to the command right after it, unless that command
+        // is the first half of a sequence — `5gg` has to survive the `g`.
+        if self.pending.is_none() {
+            self.count = None;
         }
         false
     }
@@ -447,6 +501,10 @@ impl App {
                     Some(Dialog::QueueSchedule(self.current, self.queue().window()))
             }
             ('g', 'P') => self.toggle_all_pause(),
+            ('g', 'g') => {
+                let row = self.count.take().map_or(0, |n| n.saturating_sub(1));
+                self.goto_row(row);
+            }
             ('g', 'j') | ('g', 'l') => self.cycle_queue(1),
             ('g', 'k') | ('g', 'h') => self.cycle_queue(-1),
             ('g', '>') => self.move_queue(1),
@@ -455,6 +513,7 @@ impl App {
             ('g', '-') => self.set_max_active(self.queue().max_active - 1),
             _ => {}
         }
+        self.count = None;
         false
     }
 

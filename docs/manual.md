@@ -225,6 +225,19 @@ after queueing.
 Set `--no-playlist` in the yt-dlp options and expansion is skipped — muxget
 respects the choice and hands the url over whole.
 
+### Moving around
+
+The list takes vim's movements. `j` and `k` step, `gg` and `G` jump to the ends,
+`Ctrl-d` and `Ctrl-u` move half a screen, `Ctrl-f` and `Ctrl-b` a whole one —
+measured against the rows the list can actually show, so a taller terminal pages
+further.
+
+Digits typed before a movement repeat it: `5j` is five rows down, `12G` is the
+twelfth row. The count belongs to the command right after it and is forgotten
+otherwise, so a stray number cannot surprise the next keypress. Everything is
+clamped to the list, and to the current filter — a movement never lands on a
+row that is not on screen.
+
 ### Selecting rows
 
 `Space` marks the row under the cursor, `M` marks everything between the last
@@ -314,6 +327,7 @@ the default one rather than dropping them.
 | `gn` `gr` `gd` | new / rename / delete queue |
 | `gc` | clear the queue's finished rows (asks first) |
 | `C` or `gC` | clear every row in the queue (asks first) |
+| `gg` | first row of the list (not a queue command, but it lives on `g`) |
 | `gj` `gk` | next / previous queue |
 | `g>` `g<` | move this queue in the tab order |
 | `gp` | pause or resume this queue |
@@ -759,7 +773,11 @@ metadata arrives. The sizes are the reliable part until then.
 | `p` | pause or resume the selection |
 | `P` | pause or resume every queue |
 | `x` | stop the selection, keep the rows |
-| `j` `k` / `↓` `↑` | move the selection |
+| `j` `k` / `↓` `↑` | move the cursor, `5j` for five rows |
+| `gg` / `G` | first / last row, `5G` for the fifth |
+| `Ctrl-d` `Ctrl-u` | half a screen down / up |
+| `Ctrl-f` `Ctrl-b` | a whole screen down / up |
+| `Home` / `End` | first / last row |
 | `J` `K` | move the download within its queue |
 | `[` `]` / `←` `→` | switch queue |
 | `Tab` / `f` | cycle filter |

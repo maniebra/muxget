@@ -277,3 +277,48 @@ fn a_quota_is_charged_from_the_reported_speed() {
     app.apply_schedules();
     assert!(app.queues[0].paused, "over quota, so parked until the period rolls");
 }
+
+#[test]
+fn clearing_a_queue_drops_only_its_finished_rows() {
+    use muxget::controllers::keys::Dialog;
+
+    let mut app = app_with(&[
+        Status::Done,
+        Status::Running,
+        Status::Failed("exit 1".into()),
+        Status::Queued,
+        Status::Cancelled,
+    ]);
+    app.queues[0].paused = true;
+    // A row in another queue must not be touched by clearing this one.
+    app.queues.push(Queue::new(1, "media", 3));
+    app.downloads[4].queue = 1;
+
+    assert_eq!(app.clearable_in(0, false), 2, "done and failed, not the cancelled one elsewhere");
+
+    app.on_key(KeyCode::Char('g'));
+    app.on_key(KeyCode::Char('c'));
+    assert!(matches!(app.dialog, Some(Dialog::QueueClear(0, false))), "it asks first");
+    app.on_key(KeyCode::Char('y'));
+
+    let left: Vec<Status> = app.downloads.iter().map(|d| d.status.clone()).collect();
+    assert_eq!(left, [Status::Running, Status::Queued, Status::Cancelled]);
+    assert!(app.selected < app.downloads.len(), "the cursor stays in bounds");
+
+    // Nothing finished left here, so the command says so instead of asking.
+    app.on_key(KeyCode::Char('g'));
+    app.on_key(KeyCode::Char('c'));
+    assert!(app.dialog.is_none());
+    assert_eq!(app.message, "nothing finished to clear");
+
+    // `C` takes the rest of the queue with it, running rows included.
+    app.on_key(KeyCode::Char('C'));
+    assert!(matches!(app.dialog, Some(Dialog::QueueClear(0, true))));
+    app.on_key(KeyCode::Char('y'));
+    let left: Vec<usize> = app.downloads.iter().map(|d| d.queue).collect();
+    assert_eq!(left, [1], "only the row in the other queue is left");
+
+    app.on_key(KeyCode::Char('C'));
+    assert!(app.dialog.is_none());
+    assert_eq!(app.message, "this queue is already empty");
+}

@@ -139,6 +139,8 @@ Crawl-wide wget settings — user agent, rate limit, `robots.txt`, extra headers
 | sequence | action |
 |---|---|
 | `gn` `gr` `gd` | new / rename / delete queue |
+| `gc` | clear the queue's finished rows (asks first) |
+| `C` or `gC` | clear every row in the queue (asks first) |
 | `gj` `gk` | next / previous queue |
 | `g>` `g<` | move this queue in the tab order |
 | `gp` `gP` | pause / resume this queue / every queue |

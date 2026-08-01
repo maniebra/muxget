@@ -1,8 +1,13 @@
 use std::time::{Duration, Instant};
 
 use crate::controllers::app::App;
-use crate::models::download::Status;
+use crate::models::download::{Download, Status};
 use crate::models::queue::{self, Queue};
+
+/// A row nothing more will happen to on its own.
+fn is_finished(status: &Status) -> bool {
+    matches!(status, Status::Done | Status::Cancelled | Status::Failed(_))
+}
 
 /// Queue CRUD and slot limits.
 impl App {
@@ -74,6 +79,54 @@ impl App {
         self.message = format!("queue {name} deleted, downloads moved to default");
         self.save_state();
         self.pump();
+    }
+
+    /// Open the confirmation for a clear, or say there is nothing to clear.
+    pub fn ask_clear(&mut self, all: bool) {
+        if self.clearable_in(self.current, all) == 0 {
+            self.message = match all {
+                true => "this queue is already empty".into(),
+                false => "nothing finished to clear".into(),
+            };
+            return;
+        }
+        self.dialog = Some(crate::controllers::keys::Dialog::QueueClear(self.current, all));
+    }
+
+    /// How many rows a clear would take: everything in the queue, or only the
+    /// rows that have run their course — done, cancelled or failed.
+    pub fn clearable_in(&self, at: usize, all: bool) -> usize {
+        let Some(queue) = self.queues.get(at) else { return 0 };
+        self.downloads
+            .iter()
+            .filter(|d| d.queue == queue.id && (all || is_finished(&d.status)))
+            .count()
+    }
+
+    /// Drop rows from one queue, keeping the files they wrote. `all` takes
+    /// everything in it, stopping whatever is still running; otherwise only
+    /// the rows that have already run their course go.
+    pub fn clear_queue(&mut self, at: usize, all: bool) {
+        let Some(queue) = self.queues.get(at) else { return };
+        let id = queue.id;
+        let before = self.downloads.len();
+        let goes = |d: &Download| d.queue == id && (all || is_finished(&d.status));
+        for d in self.downloads.iter_mut().filter(|d| goes(d)) {
+            // A row cannot be dropped while its backend still owns the file.
+            d.kill();
+            crate::utils::clear_creds(d.id);
+        }
+        self.downloads.retain(|d| !goes(d));
+        // Marks pointing at rows that no longer exist would act on nothing.
+        self.marked.retain(|id| self.downloads.iter().any(|d| d.id == *id));
+        self.anchor = None;
+        self.clamp_selection();
+        let gone = before - self.downloads.len();
+        self.message = match all {
+            true => format!("cleared {gone} rows"),
+            false => format!("cleared {gone} finished rows"),
+        };
+        self.save_state();
     }
 
     /// Pause the current queue, or resume it if already paused.

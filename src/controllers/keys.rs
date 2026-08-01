@@ -71,6 +71,9 @@ pub enum Dialog {
     QueueRename(usize, String),
     /// Confirming removal of the queue at this index in `queues`.
     QueueDelete(usize),
+    /// Confirming a clear of the queue at this index: every row when the flag
+    /// is set, the finished ones otherwise.
+    QueueClear(usize, bool),
     /// Daily active window for the queue at this index, `HH:MM-HH:MM`.
     QueueSchedule(usize, String),
     /// New download directory being typed.
@@ -144,6 +147,8 @@ pub const QUEUE_MENU: &[MenuItem] = &[
     MenuItem { key: 'n', label: "new queue" },
     MenuItem { key: 'r', label: "rename queue" },
     MenuItem { key: 'd', label: "delete queue" },
+    MenuItem { key: 'c', label: "clear finished rows" },
+    MenuItem { key: 'C', label: "clear every row (also `C`)" },
     MenuItem { key: 'p', label: "pause / resume this queue" },
     MenuItem { key: 't', label: "schedule (window, days, quota…)" },
     MenuItem { key: 'P', label: "pause / resume every queue" },
@@ -228,6 +233,11 @@ impl App {
                 }
                 KeyCode::Esc | KeyCode::Char('n') => {}
                 _ => self.dialog = Some(Dialog::DeleteData(at)),
+            },
+            Dialog::QueueClear(at, all) => match key {
+                KeyCode::Enter | KeyCode::Char('y') => self.clear_queue(at, all),
+                KeyCode::Esc | KeyCode::Char('n') => {}
+                _ => self.dialog = Some(Dialog::QueueClear(at, all)),
             },
             Dialog::QueueDelete(at) => match key {
                 KeyCode::Enter | KeyCode::Char('y') => self.delete_queue(at),
@@ -386,6 +396,7 @@ impl App {
             KeyCode::Char('M') => self.mark_range(),
             KeyCode::Char('A') => self.mark_all(),
             KeyCode::Char('p') => self.on_targets(|app, at| app.toggle_pause(at)),
+            KeyCode::Char('C') => self.ask_clear(true),
             KeyCode::Char('P') => self.toggle_all_pause(),
             KeyCode::Char('x') => self.on_targets(|app, at| app.cancel(at)),
             KeyCode::Char(']') | KeyCode::Right => self.cycle_queue(1),
@@ -428,6 +439,8 @@ impl App {
                 self.dialog = Some(Dialog::QueueRename(self.current, self.queue().name.clone()))
             }
             ('g', 'd') => self.dialog = Some(Dialog::QueueDelete(self.current)),
+            ('g', 'c') => self.ask_clear(false),
+            ('g', 'C') => self.ask_clear(true),
             ('g', 'p') => self.toggle_queue_pause(),
             ('g', 't') => {
                 self.dialog =

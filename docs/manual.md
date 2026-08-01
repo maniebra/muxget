@@ -312,12 +312,26 @@ the default one rather than dropping them.
 | sequence | does |
 |---|---|
 | `gn` `gr` `gd` | new / rename / delete queue |
+| `gc` | clear the queue's finished rows (asks first) |
+| `C` or `gC` | clear every row in the queue (asks first) |
 | `gj` `gk` | next / previous queue |
 | `g>` `g<` | move this queue in the tab order |
 | `gp` | pause or resume this queue |
 | `gP` or `P` | pause or resume every queue |
 | `gt` | schedule for this queue |
 | `g+` `g-` | one more / one less slot |
+
+`gc` clears the queue: the done, cancelled and failed rows go and everything
+still queued, running or paused stays. The files they wrote are left on disk —
+this empties the list, not the download directory. It asks first and says how
+many rows it is about, and does nothing but say so when there are none.
+
+`C` clears the whole queue instead: every row goes and anything still running
+is stopped first, but again the files stay on disk. Both ask before doing
+anything and say how many rows they are about.
+
+To delete the files as well, select the rows with `A` and use `iR`, which is
+the only path that touches the disk.
 
 Downloads reference their queue by a stable id, so renaming or reordering
 queues never moves a download between them.
@@ -757,6 +771,8 @@ metadata arrives. The sizes are the reliable part until then.
 | key | action |
 |---|---|
 | `gn` `gr` `gd` | new / rename / delete queue |
+| `gc` | clear the queue's finished rows (asks first) |
+| `C` or `gC` | clear every row in the queue (asks first) |
 | `gj` `gk` | next / previous queue |
 | `g>` `g<` | move this queue in the tab order |
 | `gp` `gP` | pause or resume this queue / every queue |

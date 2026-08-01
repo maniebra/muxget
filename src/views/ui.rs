@@ -448,7 +448,7 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let keys: &[(&str, &str)] = if area.width >= 100 {
-        &[("a", "add"), ("v", "paste"), ("c", "crawl"), ("e", "edit"), ("d", "del"), ("p", "pause"), ("x", "stop"), ("space", "select"), ("M", "range"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
+        &[("a", "add"), ("v", "paste"), ("c", "crawl"), ("e", "edit"), ("d", "del"), ("p", "pause"), ("x", "stop"), ("space", "select"), ("M", "range"), ("C", "clear"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
     } else if area.width >= 74 {
         &[("a", "add"), ("v", "paste"), ("c", "crawl"), ("d", "del"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
     } else {

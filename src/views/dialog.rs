@@ -147,6 +147,31 @@ pub fn draw(f: &mut Frame, app: &App) {
                 false => "space pick · a all · / words · t dates · d directory · Enter download",
             },
         ),
+        Dialog::QueueClear(at, all) => (
+            match all {
+                true => "clear the queue",
+                false => "clear finished rows",
+            },
+            vec![
+                Line::styled(
+                    match all {
+                        true => "Remove every row from this queue, stopping whatever is still running? The files they wrote stay on disk.",
+                        false => "Remove the done, cancelled and failed rows from this queue? The files they wrote stay on disk.",
+                    },
+                    Style::default().fg(t.fg),
+                ),
+                Line::default(),
+                Line::styled(
+                    format!(
+                        "{} rows in {}",
+                        app.clearable_in(*at, *all),
+                        app.queues.get(*at).map_or("", |q| q.name.as_str())
+                    ),
+                    Style::default().fg(t.err),
+                ),
+            ],
+            "y/Enter clear · n/Esc keep",
+        ),
         Dialog::QueueDelete(at) => (
             "delete queue",
             vec![

@@ -53,8 +53,11 @@ this one stopped.
 | `yt-dlp` | video sites, playlists, anything aria2c does not claim |
 | `wget` | crawling and offline mirrors |
 
-Any of them can be missing; you only lose what it does. A url whose backend is
-not installed fails immediately with the spawn error rather than sitting queued.
+Any of them can be missing; you only lose what it does. muxget checks `PATH` at
+startup and names the ones it did not find in the status line — `not installed:
+yt-dlp, wget — install to download` — so a missing backend is visible before
+the first url rather than after it. A url whose backend is not installed fails
+immediately with the spawn error rather than sitting queued.
 
 ### Install
 

@@ -69,6 +69,13 @@ impl App {
         app.nerd = state.nerd;
         app.confirm_playlist = state.confirm_playlist;
         app.restore(&state.downloads);
+        // Last, so it is the line the user is left looking at: nothing works
+        // without a backend, and the failure would otherwise be one cryptic
+        // "no such file" per download.
+        let missing = crate::utils::missing_backends();
+        if !missing.is_empty() {
+            app.message = format!("not installed: {} — install to download", missing.join(", "));
+        }
         app
     }
 

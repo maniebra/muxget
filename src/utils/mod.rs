@@ -115,6 +115,28 @@ pub fn clear_all_creds() {
     let _ = std::fs::remove_dir_all(creds_dir());
 }
 
+/// Is this program on `PATH`? No spawning: a missing backend would cost a
+/// failed process launch to find out, and a present one a whole `--version`.
+pub fn on_path(program: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else { return false };
+    std::env::split_paths(&path).any(|dir| {
+        // `.exe` for Windows, where the bare name is not the file name.
+        [program, &format!("{program}.exe")]
+            .iter()
+            .any(|name| dir.join(name).is_file())
+    })
+}
+
+/// Backends muxget drives that are not installed, in registry order. Empty is
+/// the happy case, so a caller can treat it as a boolean.
+pub fn missing_backends() -> Vec<&'static str> {
+    crate::models::backends()
+        .iter()
+        .map(|b| b.name())
+        .filter(|name| !on_path(name))
+        .collect()
+}
+
 /// Kill a backend process left over from an earlier run. The name check keeps
 /// a recycled pid from taking some unrelated process down with it; `ps` rather
 /// than `/proc` so this also holds on macOS.

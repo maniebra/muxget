@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Rect, Size};
 
-use crate::controllers::app::App;
+use crate::controllers::app::{App, Help};
 use crate::controllers::downloads::Filter;
 use crate::views::ui;
 use crate::controllers::crawl;
@@ -213,6 +213,10 @@ impl App {
 
     /// Handle one keypress. Returns true when the app should quit.
     pub fn on_key(&mut self, key: KeyCode) -> bool {
+        if self.help.is_some() {
+            self.help_key(key);
+            return false;
+        }
         if let Some(panel) = &mut self.settings {
             match panel.on_key(key) {
                 Action::None => {}
@@ -394,6 +398,34 @@ impl App {
         }
     }
 
+    /// The manual owns the keyboard while it is open: pages sideways, scrolls
+    /// down, and closes on anything that means "done".
+    fn help_key(&mut self, key: KeyCode) {
+        let Some(mut help) = self.help else { return };
+        let pages = crate::views::help::PAGES.len();
+        let lines = crate::views::help::PAGES[help.tab].lines.len();
+        match key {
+            KeyCode::Esc | KeyCode::Char('q' | '?') => {
+                self.help = None;
+                return;
+            }
+            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
+                help = Help { tab: (help.tab + 1) % pages, scroll: 0 }
+            }
+            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
+                help = Help { tab: (help.tab + pages - 1) % pages, scroll: 0 }
+            }
+            // Never scroll the last line off the top.
+            KeyCode::Down | KeyCode::Char('j') => {
+                help.scroll = (help.scroll + 1).min(lines.saturating_sub(1))
+            }
+            KeyCode::Up | KeyCode::Char('k') => help.scroll = help.scroll.saturating_sub(1),
+            KeyCode::Char('g') => help.scroll = 0,
+            _ => {}
+        }
+        self.help = Some(help);
+    }
+
     /// The count typed before a movement, and gone once it is used. `0` only
     /// counts when a count is already going, so it stays free for a `0` key.
     fn take_count(&mut self) -> usize {
@@ -419,6 +451,7 @@ impl App {
             KeyCode::Char('a') => self.dialog = Some(Dialog::Add(Form::default())),
             KeyCode::Char('c') => self.dialog = Some(Dialog::Crawl(Form::default())),
             KeyCode::Char('v') => self.paste(),
+            KeyCode::Char('?') => self.help = Some(Help::default()),
             KeyCode::Char('e') => {
                 if let Some(d) = self.downloads.get(self.selected) {
                     self.dialog = Some(Dialog::Edit(self.selected, d.url.clone()));

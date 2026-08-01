@@ -91,7 +91,7 @@ sidebar     queues, then filters
 table       the current queue, filtered
 sparkline   aggregate throughput, last two minutes
 details     the selected row in full
-footer      keys, then the last message
+footer      a few keys, then the last message — `?` has the rest
 ```
 
 The layout is responsive, and panels are dropped rather than squeezed:
@@ -816,6 +816,7 @@ metadata arrives. The sizes are the reliable part until then.
 | `[` `]` / `←` `→` | switch queue |
 | `Tab` / `f` | cycle filter |
 | `s` | settings |
+| `?` | the built-in manual: tabbed pages, `Tab` to page, `Esc` to close |
 | `q` / `ZZ` / `ZQ` | quit |
 
 ### Queue sequences (`g`)

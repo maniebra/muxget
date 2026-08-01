@@ -16,6 +16,13 @@ use crate::models::state::State;
 use crate::views;
 use crate::views::theme::Theme;
 
+/// Which page of the manual is open, and how far down it.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Help {
+    pub tab: usize,
+    pub scroll: usize,
+}
+
 /// Shared state plus the event loop. The behaviour lives in sibling modules,
 /// each owning one concern: `downloads`, `queues`, `settings`, `keys`.
 pub struct App {
@@ -25,6 +32,8 @@ pub struct App {
     pub dialog: Option<Dialog>,
     /// Settings panel; owns the keyboard while open.
     pub settings: Option<Settings>,
+    /// The manual, when it is up. Owns the keyboard too.
+    pub help: Option<Help>,
     /// Half-typed key sequence, e.g. `g` waiting for `n`. Shows the menu.
     pub pending: Option<char>,
     pub message: String,
@@ -102,6 +111,7 @@ impl App {
             selected: 0,
             dialog: None,
             settings: None,
+            help: None,
             pending: None,
             message: String::new(),
             filter: Filter::All,

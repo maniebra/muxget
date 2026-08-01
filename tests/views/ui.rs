@@ -98,3 +98,45 @@ fn the_categories_tab_unfolds_each_rule_into_its_fields() {
     assert!(screen.contains("extensions") && screen.contains("directory"), "fields are listed");
     assert!(screen.contains("queue video"), "and the summary says where it sends things");
 }
+
+#[test]
+fn the_manual_opens_on_a_question_mark_and_pages_through() {
+    use crossterm::event::KeyCode;
+    use muxget::controllers::app::App;
+    use muxget::models::queue::{Queue, DEFAULT};
+    use muxget::views::help::PAGES;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir().join("muxget-tests-ui"));
+    let mut app = App::with_queues(".".into(), vec![Queue::new(DEFAULT, "default", 3)]);
+
+    app.on_key(KeyCode::Char('?'));
+    let help = app.help.expect("the manual opens");
+    assert_eq!((help.tab, help.scroll), (0, 0));
+
+    let screen = |app: &App| {
+        let mut term = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        term.draw(|f| muxget::views::ui::draw(f, app)).unwrap();
+        term.backend().buffer().content().iter().map(|c| c.symbol()).collect::<String>()
+    };
+    let first = screen(&app);
+    assert!(first.contains("manual"), "titled");
+    for page in PAGES {
+        assert!(first.contains(page.name), "every page has a tab: {}", page.name);
+    }
+
+    // Tab pages sideways and wraps; scrolling is per page.
+    app.on_key(KeyCode::Tab);
+    assert_eq!(app.help.unwrap().tab, 1);
+    app.on_key(KeyCode::Char('j'));
+    assert_eq!(app.help.unwrap().scroll, 1);
+    app.on_key(KeyCode::BackTab);
+    assert_eq!(app.help.unwrap(), muxget::controllers::app::Help { tab: 0, scroll: 0 });
+
+    // The manual owns the keyboard: `a` pages nothing and opens no dialog.
+    app.on_key(KeyCode::Char('a'));
+    assert!(app.dialog.is_none());
+    app.on_key(KeyCode::Esc);
+    assert!(app.help.is_none(), "and Esc closes it");
+}

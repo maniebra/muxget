@@ -26,7 +26,7 @@ fn targets(app: &App, at: usize) -> String {
 }
 
 /// Centered popover, at most `w` x `h` but never wider than the terminal.
-fn centered(area: Rect, w: u16, h: u16) -> Rect {
+pub fn centered(area: Rect, w: u16, h: u16) -> Rect {
     let w = w.min(area.width.saturating_sub(2));
     let h = h.min(area.height.saturating_sub(2));
     let [row] = Layout::vertical([Constraint::Length(h)])

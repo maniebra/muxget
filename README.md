@@ -66,12 +66,16 @@ the saved values for that run only.
 | `Ctrl-f` / `Ctrl-b` | a whole screen down / up |
 | `J` / `K` | move the download within its queue |
 | `s` | settings |
+| `?` | built-in manual — tabbed pages, `Tab` to move, `Esc` to close |
 | `Tab` | cycle filter: all / active / done / failed |
 | `[` `]` | switch queue |
 | `q` or `ZZ` | quit |
 
 With nothing selected, `p`, `x`, `d`, `it` and `iR` act on the row under the
 cursor as before; select rows first and they act on all of them at once.
+
+The footer shows a handful of keys; `?` opens the manual with the rest, a page
+per topic.
 
 The mouse works too: click a queue, a filter or a row to select it, and scroll
 over the queue list or the table to move through them. A dialog or the settings

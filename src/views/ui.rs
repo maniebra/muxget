@@ -94,6 +94,8 @@ pub fn draw(f: &mut Frame, app: &App) {
     // Last, so popovers sit on top of everything.
     crate::views::dialog::draw(f, app);
     crate::views::options::draw(f, app);
+    // Last, so the manual sits over whatever it was called from.
+    crate::views::help::draw(f, app);
 }
 
 /// Bordered panel on the sidebar/alt background.
@@ -447,12 +449,21 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
+    // The rest of the keys live in `?`, so this line stays readable and
+    // leaves room for the message beside it.
     let keys: &[(&str, &str)] = if area.width >= 100 {
-        &[("a", "add"), ("v", "paste"), ("c", "crawl"), ("e", "edit"), ("d", "del"), ("p", "pause"), ("x", "stop"), ("space", "select"), ("M", "range"), ("C", "clear"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
+        &[
+            ("a", "add"),
+            ("v", "paste"),
+            ("space", "select"),
+            ("s", "settings"),
+            ("?", "help"),
+            ("q", "quit"),
+        ]
     } else if area.width >= 74 {
-        &[("a", "add"), ("v", "paste"), ("c", "crawl"), ("d", "del"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
+        &[("a", "add"), ("s", "settings"), ("?", "help"), ("q", "quit")]
     } else {
-        &[("a", "add"), ("c", "crawl"), ("g…", "queue"), ("q", "quit")]
+        &[("a", "add"), ("?", "help"), ("q", "quit")]
     };
 
     let mut spans = Vec::new();

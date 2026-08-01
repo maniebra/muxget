@@ -105,8 +105,12 @@ The layout is responsive, and panels are dropped rather than squeezed:
 
 ### The table
 
-Columns appear as width allows: icon, name, progress bar, percent, then rates
-and status. Rows are zebra striped. The name is the file name once a backend
+Columns appear as width allows: icon, name, progress bar, percent, then total
+size, rates and status. The size is what the backend reported and stays blank
+until it reports one. A yt-dlp video downloaded as separate video and audio
+streams shows the stream being fetched, so the number changes once when it
+moves on to the audio; aria2c reports the whole file throughout — a total nobody knows yet is not worth guessing from the
+percentage. Rows are zebra striped. The name is the file name once a backend
 reports one, and the url until then.
 
 ### Status icons

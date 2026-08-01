@@ -50,3 +50,26 @@ fn a_magnet_shows_its_display_name() {
         "magnet:?xt=urn:btih:abc123"
     );
 }
+
+#[test]
+fn the_list_shows_the_total_size() {
+    use muxget::controllers::app::App;
+    use muxget::models::queue::{Queue, DEFAULT};
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir().join("muxget-tests-ui"));
+    let mut app = App::with_queues(".".into(), vec![Queue::new(DEFAULT, "default", 3)]);
+    let mut d = row("https://example.com/arch.iso");
+    d.status = Status::Running;
+    d.progress.total = "1.4GiB".into();
+    d.progress.percent = 42.0;
+    app.downloads.push(d);
+
+    let mut term = Terminal::new(TestBackend::new(120, 12)).unwrap();
+    term.draw(|f| muxget::views::ui::draw(f, &app)).unwrap();
+    let screen = term.backend().buffer().content().iter().map(|c| c.symbol()).collect::<String>();
+
+    assert!(screen.contains("size"), "the column is headed");
+    assert!(screen.contains("1.4GiB"), "and carries the total: {screen}");
+}

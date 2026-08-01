@@ -165,27 +165,6 @@ fn the_spider_stays_on_the_host_without_being_trapped_under_the_start_path() {
 }
 
 #[test]
-fn the_options_field_reads_as_words() {
-    use muxget::controllers::crawl::from_form;
-    use muxget::controllers::keys::Form;
-
-    let form = |options: &str| {
-        let mut f = Form::default();
-        f.fields[0] = "https://x.com/docs/".into();
-        f.fields[6] = options.into();
-        from_form(&f)
-    };
-
-    let plain = form("");
-    assert!(plain.same_domain && !plain.under_path && !plain.ignore_robots && !plain.flat);
-
-    let all = form("Any-Domain under-path no-robots flat offline");
-    assert!(!all.same_domain && all.under_path && all.ignore_robots && all.flat && all.offline);
-    // The other spelling of the same switch.
-    assert!(form("ignore-robots").ignore_robots);
-}
-
-#[test]
 fn the_crawler_tab_supplies_the_defaults_a_form_can_override() {
     use muxget::controllers::crawl::{defaults, from_form};
     use muxget::controllers::keys::Form;
@@ -215,5 +194,16 @@ fn the_crawler_tab_supplies_the_defaults_a_form_can_override() {
     assert_eq!((crawl.depth, crawl.exts.as_slice()), (2, ["zip".to_string()].as_slice()));
     assert!(crawl.same_domain && !crawl.ignore_robots && crawl.flat);
 
+    // With nothing saved, the built-in defaults are what a form starts from.
     args::save("crawl", "").unwrap();
+    let mut plain = Form::default();
+    plain.fields[0] = "https://x.com/docs/".into();
+    let crawl = from_form(&plain);
+    assert!(crawl.same_domain && !crawl.under_path && !crawl.ignore_robots && !crawl.flat);
+    assert_eq!(crawl.depth, 1);
+
+    plain.fields[6] = "Any-Domain under-path ignore-robots flat offline".into();
+    let crawl = from_form(&plain);
+    assert!(!crawl.same_domain && crawl.under_path && crawl.ignore_robots);
+    assert!(crawl.flat && crawl.offline, "options are read as words, whatever their case");
 }

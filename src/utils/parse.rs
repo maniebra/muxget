@@ -53,10 +53,25 @@ pub fn ytdlp(line: &str) -> Option<Progress> {
         .nth(1)
         .unwrap_or("")
         .to_string();
+    // `of   27.20MiB`, or `of ~  27.20MiB` when yt-dlp is estimating from
+    // fragments. Either way the number is the first token that reads as a size.
+    let total = line
+        .split_whitespace()
+        .skip_while(|t| *t != "of")
+        .skip(1)
+        // Not past the speed: `of Unknown B at 1.80MiB/s` has no size in it,
+        // and the rate is not one.
+        .take_while(|t| *t != "at")
+        .find(|t| bytes(t).is_some())
+        .unwrap_or("");
+    // yt-dlp reports no running total, only the percentage of one.
+    let done = bytes(total).map(|t| human(t * pct as f64 / 100.0)).unwrap_or_default();
     Some(Progress {
         percent: pct,
         speed,
         eta,
+        done,
+        total: total.to_string(),
         ..Default::default()
     })
 }

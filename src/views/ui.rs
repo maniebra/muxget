@@ -278,6 +278,13 @@ fn draw_table(f: &mut Frame, app: &App, area: Rect) {
         cells.push(Cell::from(bar(d.progress.percent, if wide { 14 } else { 8 })).style(Style::default().fg(color)));
         cells.push(Cell::from(format!("{:>5.1}%", d.progress.percent)));
         if mid {
+            // Blank until a backend reports one: a total nobody knows yet is
+            // better left empty than guessed at from the percentage.
+            cells.push(
+                Cell::from(format!("{:>8}", d.progress.total)).style(Style::default().fg(t.muted)),
+            );
+        }
+        if mid {
             cells.push(Cell::from(rates(&d.progress)).style(Style::default().fg(t.muted)));
             cells.push(Cell::from(state).style(Style::default().fg(color)));
         }
@@ -289,6 +296,10 @@ fn draw_table(f: &mut Frame, app: &App, area: Rect) {
     widths.push(Constraint::Length(if wide { 14 } else { 8 }));
     widths.push(Constraint::Length(6));
     header.extend(["progress", ""]);
+    if mid {
+        widths.push(Constraint::Length(8));
+        header.push("size");
+    }
     if mid {
         widths.extend([Constraint::Length(10), Constraint::Length(12)]);
         header.extend(["speed", "eta"]);

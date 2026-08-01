@@ -6,7 +6,7 @@ use ratatui::Frame;
 
 use crate::controllers::app::App;
 use crate::controllers::crawl::CRAWL_LABELS;
-use crate::controllers::keys::{menu_for, Dialog, Form, FORM_LABELS, SECRET_FIELDS};
+use crate::controllers::keys::{menu_for, Dialog, Form, Pick, FORM_LABELS, SECRET_FIELDS};
 use crate::models::crawl::Found;
 use crate::utils::parse::human;
 use crate::views::theme::Theme;
@@ -116,6 +116,14 @@ pub fn draw(f: &mut Frame, app: &App) {
             found_lines(t, found, picked, *at),
             "space pick · a all · Enter download · Esc cancel",
         ),
+        Dialog::Playlist(pick) => (
+            "playlist entries",
+            playlist_lines(t, pick),
+            match pick.editing.is_some() {
+                true => "Enter set directory · Esc keep the old one",
+                false => "space pick · a all · d directory · Enter download · Esc cancel",
+            },
+        ),
         Dialog::QueueDelete(at) => (
             "delete queue",
             vec![
@@ -137,7 +145,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     let area = centered(f.area(), 76, match dialog {
         Dialog::Add(_) => 16,
         Dialog::Crawl(_) => 13,
-        Dialog::Crawled(..) => 20,
+        Dialog::Crawled(..) | Dialog::Playlist(_) => 20,
         // Its field plus the three lines of spec help.
         Dialog::QueueSchedule(..) => 13,
         _ => 9,
@@ -340,27 +348,57 @@ fn named<'a>(t: &Theme, label: &str, buf: &str) -> Vec<Line<'a>> {
 /// total, so the choice is made before anything is fetched.
 fn found_lines<'a>(t: &Theme, found: &[Found], picked: &[usize], at: usize) -> Vec<Line<'a>> {
     let total: f64 = picked.iter().filter_map(|i| found.get(*i)?.size).sum();
-    let mut lines = vec![
-        Line::styled(
-            format!(
-                "{} links found · {} picked · {}",
-                found.len(),
-                picked.len(),
-                human(total)
-            ),
-            Style::default().fg(t.accent),
+    let head = format!("{} links found · {} picked · {}", found.len(), picked.len(), human(total));
+    let rows: Vec<String> = found
+        .iter()
+        .map(|f| format!("{:>9}  {}", f.size.map(human).unwrap_or_default(), f.url))
+        .collect();
+    pick_lines(t, head, &rows, picked, at)
+}
+
+fn playlist_lines<'a>(t: &Theme, pick: &Pick) -> Vec<Line<'a>> {
+    let dir = match pick.editing.as_ref() {
+        Some(buf) => format!("directory: {buf}▏"),
+        None => format!(
+            "directory: {}",
+            match pick.over.dir.is_empty() {
+                true => "(the download directory)",
+                false => &pick.over.dir,
+            }
         ),
-        Line::default(),
-    ];
-    // Keep the cursor on screen without scrolling state of its own.
-    let capacity = 12;
-    let from = at.saturating_sub(capacity - 1);
-    for (i, f) in found.iter().enumerate().skip(from).take(capacity) {
+    };
+    let head = format!(
+        "{} entries · {} picked\n{dir}",
+        pick.entries.len(),
+        pick.picked.len()
+    );
+    // The title if yt-dlp knew one, the url otherwise.
+    let rows: Vec<String> = pick
+        .entries
+        .iter()
+        .map(|(url, title)| match title.is_empty() {
+            true => url.clone(),
+            false => title.clone(),
+        })
+        .collect();
+    pick_lines(t, head, &rows, &pick.picked, pick.at)
+}
+
+/// A pick-from-a-list body: a header, then one `[x] row` per entry with the
+/// cursor kept on screen — no scroll state of its own.
+fn pick_lines<'a>(t: &Theme, head: String, rows: &[String], picked: &[usize], at: usize) -> Vec<Line<'a>> {
+    let mut lines: Vec<Line> = head
+        .lines()
+        .map(|l| Line::styled(l.to_string(), Style::default().fg(t.accent)))
+        .collect();
+    lines.push(Line::default());
+    let capacity = 12 - (lines.len() - 2);
+    let from = at.saturating_sub(capacity.saturating_sub(1));
+    for (i, row) in rows.iter().enumerate().skip(from).take(capacity) {
         let on = i == at;
         let mark = if picked.contains(&i) { "[x]" } else { "[ ]" };
-        let size = f.size.map(human).unwrap_or_default();
         lines.push(Line::styled(
-            format!("{} {} {:>9}  {}", if on { "▸" } else { " " }, mark, size, f.url),
+            format!("{} {} {}", if on { "▸" } else { " " }, mark, row),
             Style::default()
                 .fg(if on { t.accent } else { t.fg })
                 .add_modifier(if on { Modifier::BOLD } else { Modifier::empty() }),

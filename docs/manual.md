@@ -190,6 +190,14 @@ downloaded: `yt-dlp --flat-playlist` lists the entries off-thread and each one
 arrives as its own row, with its own progress, slot and cancel. Settings typed
 into the add form are passed to every entry.
 
+Turn on **confirm before dl playlist** in settings › general and the entries
+are listed rather than queued: a picker opens with every entry checked, `space`
+drops or re-adds one, `a` clears or checks the lot, `d` types the directory
+they all land in, and `Enter` queues what is left. Entry titles are shown when
+yt-dlp reports them. Anything else — a rate cap, a user name — comes from the
+add form, as it does without the picker, and per-row edits are still available
+after queueing.
+
 Set `--no-playlist` in the yt-dlp options and expansion is skipped — muxget
 respects the choice and hands the url over whole.
 
@@ -450,7 +458,7 @@ check what the file parsed into.
 | `g` / `G` | first / last option |
 | `Esc` or `q` | close, saving the backend form |
 
-- **general** — theme, download directory, nerd font icons.
+- **general** — theme, download directory, nerd font icons, confirm before dl playlist.
 - **backends** — a form over the common aria2c, yt-dlp and wget options.
 - **categories** — the routing rules as they will be applied.
 

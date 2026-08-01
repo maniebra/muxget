@@ -25,6 +25,16 @@ impl App {
         };
     }
 
+    /// Ask which entries to download when a playlist url is added.
+    pub fn toggle_confirm_playlist(&mut self) {
+        self.confirm_playlist = !self.confirm_playlist;
+        self.save_state();
+        self.message = match self.confirm_playlist {
+            true => "playlists ask before downloading".into(),
+            false => "playlists download every entry".into(),
+        };
+    }
+
     /// Where new downloads are written. Running transfers keep their old dir.
     pub fn set_dir(&mut self, dir: &str) {
         let path = PathBuf::from(expand_home(dir.trim()));
@@ -40,7 +50,7 @@ impl App {
     /// Persist the directory and queues. Called by every action that changes
     /// them, so there is no separate "save settings" step to forget.
     pub fn save_state(&self) {
-        State::save(&self.dir, &self.queues, &self.downloads, self.nerd);
+        State::save(&self.dir, &self.queues, &self.downloads, self.nerd, self.confirm_playlist);
     }
 }
 

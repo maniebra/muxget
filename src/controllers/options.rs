@@ -151,7 +151,8 @@ pub struct Settings {
 }
 
 pub const TABS: [&str; 3] = ["general", "backends", "categories"];
-pub const GENERAL: [&str; 3] = ["theme", "download directory", "nerd font icons"];
+pub const GENERAL: [&str; 4] =
+    ["theme", "download directory", "nerd font icons", "confirm before dl playlist"];
 
 /// What the panel asks the app to do; everything else it handles itself.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -163,6 +164,7 @@ pub enum Action {
     PrevTheme,
     EditDir,
     ToggleNerd,
+    ToggleConfirmPlaylist,
 }
 
 impl Settings {
@@ -220,6 +222,7 @@ impl Settings {
             (0, 0, KeyCode::Char('T')) => Action::PrevTheme,
             (0, 1, KeyCode::Enter) => Action::EditDir,
             (0, 2, KeyCode::Enter) | (0, 2, KeyCode::Char(' ')) => Action::ToggleNerd,
+            (0, 3, KeyCode::Enter) | (0, 3, KeyCode::Char(' ')) => Action::ToggleConfirmPlaylist,
             // One backend's form at a time; `b` walks to the next.
             (1, _, KeyCode::Char('b')) => {
                 let names: Vec<&'static str> =

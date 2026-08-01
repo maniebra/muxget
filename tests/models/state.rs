@@ -5,7 +5,7 @@ use muxget::models::state::State;
 #[test]
 fn round_trips_directory_and_queues() {
     let queues = [Queue::new(0, "default", 3), Queue::new(1, "media", 6)];
-    let text = State::render(std::path::Path::new("/tmp/dl"), &queues, &[], false);
+    let text = State::render(std::path::Path::new("/tmp/dl"), &queues, &[], false, false);
 
     let back = State::parse(&text);
     assert_eq!(back.dir, Some("/tmp/dl".into()));
@@ -31,11 +31,11 @@ fn missing_or_broken_lines_fall_back_instead_of_failing() {
 fn a_paused_queue_comes_back_paused() {
     let mut q = Queue::new(0, "default", 3);
     q.paused = true;
-    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q.clone()], &[], false));
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q.clone()], &[], false, false));
     assert!(back.queues[0].paused, "the pause outlives the run that made it");
 
     q.paused = false;
-    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[], false));
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[], false, false));
     assert!(!back.queues[0].paused);
     // Files written before the pause was stored still load.
     assert!(!State::parse("queue = default|3||0\n").queues[0].paused);
@@ -69,8 +69,7 @@ fn downloads_round_trip_and_unfinished_ones_come_back_queued() {
         std::path::Path::new("/tmp"),
         &[Queue::new(0, "default", 3), Queue::new(1, "media", 3)],
         &downloads,
-        false,
-    ));
+        false, false));
 
     assert_eq!(back.downloads.len(), 5);
     assert_eq!(back.downloads[0].status, Status::Queued, "running resumes");
@@ -85,7 +84,7 @@ fn downloads_round_trip_and_unfinished_ones_come_back_queued() {
 #[test]
 fn a_url_containing_a_pipe_survives() {
     let downloads = [row(0, Status::Done, "https://example.com/x?a=1|2")];
-    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &downloads, false));
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &downloads, false, false));
     assert_eq!(back.downloads[0].url, "https://example.com/x?a=1|2");
 }
 
@@ -99,7 +98,7 @@ fn broken_download_lines_are_skipped() {
 fn a_queue_window_round_trips_and_is_optional() {
     let mut q = muxget::models::queue::Queue::new(0, "night", 3);
     q.set_spec("22:00-06:00 mon-fri retry=2 quota=150MB/4h");
-    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[], false));
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[q], &[], false, false));
     assert_eq!(back.queues[0].schedule, Some((22 * 60, 6 * 60)));
     assert_eq!(back.queues[0].retry, 2);
     assert_eq!(back.queues[0].quota, Some((150 * 1024 * 1024, 240)));
@@ -134,8 +133,7 @@ fn per_item_settings_round_trip_and_stay_optional() {
         std::path::Path::new("/tmp"),
         &[],
         &[d, plain],
-        false,
-    ));
+        false, false));
 
     assert_eq!(back.downloads[0].over.dir, "/tmp/here");
     assert_eq!(back.downloads[0].over.rate, "2M");
@@ -151,9 +149,9 @@ fn per_item_settings_round_trip_and_stay_optional() {
 
 #[test]
 fn the_nerd_font_choice_round_trips_and_defaults_off() {
-    let on = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &[], true));
+    let on = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &[], true, false));
     assert!(on.nerd);
-    let off = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &[], false));
+    let off = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &[], false, false));
     assert!(!off.nerd);
     // A file written before the option existed.
     assert!(!State::parse("dir = /tmp\n").nerd);
@@ -168,8 +166,7 @@ fn a_running_pid_round_trips_so_the_next_run_can_kill_it() {
         std::path::Path::new("/tmp"),
         &[],
         &[d, plain],
-        false,
-    ));
+        false, false));
 
     assert_eq!(back.downloads[0].pid, Some(4242));
     assert_eq!(back.downloads[1].pid, None, "no line written when there is none");
@@ -182,6 +179,6 @@ fn the_output_path_survives_a_restart() {
     // Without it a finished yt-dlp row comes back named after its url tail.
     let mut d = row(0, Status::Done, "https://y.com/watch?v=abc");
     d.path = Some("/tmp/Some Video Title.mp4".into());
-    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &[d], false));
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &[d], false, false));
     assert_eq!(back.downloads[0].path.as_deref(), Some(std::path::Path::new("/tmp/Some Video Title.mp4")));
 }

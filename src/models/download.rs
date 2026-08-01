@@ -134,6 +134,9 @@ pub enum Update {
     Finished(usize, Status),
     /// A playlist entry found by the expander: (queue id, url, overrides).
     Discovered(usize, String, Overrides),
+    /// A whole playlist, listed but not queued, for the user to pick from:
+    /// (queue id, `(url, title)` entries, overrides typed on the add form).
+    Listed(usize, Vec<(String, String)>, Overrides),
     /// Status line for the footer.
     Notice(String),
 }

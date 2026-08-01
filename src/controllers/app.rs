@@ -34,6 +34,8 @@ pub struct App {
     pub theme: Theme,
     /// Use nerd font glyphs for status icons.
     pub nerd: bool,
+    /// Show a playlist's entries to pick from instead of queueing them all.
+    pub confirm_playlist: bool,
     /// Routing rules, read once at startup.
     pub rules: Vec<Rule>,
     pub themes: Vec<Theme>,
@@ -65,6 +67,7 @@ impl App {
         }
         let mut app = App::with_queues(dir, state.queues_or_default());
         app.nerd = state.nerd;
+        app.confirm_playlist = state.confirm_playlist;
         app.restore(&state.downloads);
         app
     }
@@ -90,6 +93,7 @@ impl App {
             next_queue_id,
             theme: Theme::saved().unwrap_or_default(),
             nerd: false,
+            confirm_playlist: false,
             rules: rule::load(),
             themes: Theme::all(),
             history: Vec::new(),
@@ -150,6 +154,7 @@ impl App {
                     }
                 }
                 Update::Discovered(queue, url, over) => self.enqueue(&url, queue, over),
+                Update::Listed(queue, entries, over) => self.listed(queue, entries, over),
                 Update::Crawled(crawl, found) => self.crawled(crawl, found),
                 Update::Notice(text) => self.message = text,
                 Update::Finished(id, s) => {

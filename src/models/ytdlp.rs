@@ -23,15 +23,26 @@ pub fn expands_playlist(url: &str) -> bool {
     is_playlist(url) && !args::load("yt-dlp").iter().any(|a| a == "--no-playlist")
 }
 
-/// Lists the entry urls, one per line, without touching the media itself.
+/// Lists the entries, one `<url>\t<title>` per line, without touching the
+/// media itself.
 pub fn list_command(url: &str) -> Command {
     let mut c = Command::new("yt-dlp");
     c.arg("--flat-playlist")
         .arg("--ignore-errors")
         .arg("--print")
-        .arg("%(url)s")
+        .arg("%(url)s\t%(title)s")
         .arg(url);
     c
+}
+
+/// One listed line as (url, title); the title is whatever yt-dlp knew, and
+/// may be missing on an old version or a private entry.
+pub fn entry(line: &str) -> Option<(String, String)> {
+    if !line.starts_with("http") {
+        return None;
+    }
+    let (url, title) = line.split_once('\t').unwrap_or((line, ""));
+    Some((url.trim().to_string(), title.trim().to_string()))
 }
 
 /// Only what would end the quoted string or escape the next character.

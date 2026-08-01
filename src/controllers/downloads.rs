@@ -1,6 +1,7 @@
 use std::process::Stdio;
 
 use crate::controllers::app::App;
+use crate::controllers::keys::{Dialog, Pick};
 use crate::models::download::{Download, Overrides, Progress, Status, Update};
 use crate::models::state::SavedDownload;
 use crate::models::{self, aria2, backend, pick, queue, ytdlp};
@@ -146,10 +147,12 @@ impl App {
         self.pump();
     }
 
-    /// List a playlist's entries off-thread; each one arrives as `Discovered`.
+    /// List a playlist's entries off-thread; each one arrives as `Discovered`,
+    /// or the whole list as `Listed` when the user wants to pick from it.
     fn expand_playlist(&mut self, url: &str, over: Overrides) {
         let queue = self.queue().id;
         let (tx, url) = (self.tx.clone(), url.to_string());
+        let confirm = self.confirm_playlist;
         self.message = format!("expanding playlist {url}…");
 
         std::thread::spawn(move || {
@@ -167,19 +170,54 @@ impl App {
             };
             let stdout = child.stdout.take().expect("piped above");
 
-            let mut found = 0;
+            let mut entries = Vec::new();
             for_each_line(stdout, |line| {
-                if line.starts_with("http") {
-                    found += 1;
-                    let _ = tx.send(Update::Discovered(queue, line.to_string(), over.clone()));
+                let Some(entry) = ytdlp::entry(line) else { return };
+                // Confirming holds them back, so the picker gets the list in
+                // one piece; otherwise each one is queued as it arrives.
+                if !confirm {
+                    let _ = tx.send(Update::Discovered(queue, entry.0.clone(), over.clone()));
                 }
+                entries.push(entry);
             });
             let _ = child.wait();
-            let _ = tx.send(Update::Notice(match found {
-                0 => format!("no playlist entries found in {url}"),
-                n => format!("queued {n} entries from the playlist"),
-            }));
+            if entries.is_empty() {
+                let _ = tx.send(Update::Notice(format!("no playlist entries found in {url}")));
+                return;
+            }
+            let _ = match confirm {
+                true => tx.send(Update::Listed(queue, entries, over)),
+                false => tx.send(Update::Notice(format!(
+                    "queued {} entries from the playlist",
+                    entries.len()
+                ))),
+            };
         });
+    }
+
+    /// A playlist came back listed rather than queued: show it to pick from.
+    pub fn listed(&mut self, queue: usize, entries: Vec<(String, String)>, over: Overrides) {
+        self.message = format!("{} entries — pick which to download", entries.len());
+        self.dialog = Some(Dialog::Playlist(Box::new(Pick {
+            // Everything picked to start with: the common case is "all but a
+            // few", and `a` clears the lot for the opposite one.
+            picked: (0..entries.len()).collect(),
+            entries,
+            at: 0,
+            queue,
+            over,
+            editing: None,
+        })));
+    }
+
+    /// Queue the picked entries, each with the settings shown in the picker.
+    pub fn add_listed(&mut self, pick: &Pick) {
+        let mut picked: Vec<usize> = pick.picked.clone();
+        picked.sort_unstable();
+        for (url, _) in picked.iter().filter_map(|i| pick.entries.get(*i)) {
+            self.enqueue(url, pick.queue, pick.over.clone());
+        }
+        self.message = format!("queued {} of {} entries", picked.len(), pick.entries.len());
     }
 
     /// Rebuild last session's list. Ids are reassigned — the saved ones meant

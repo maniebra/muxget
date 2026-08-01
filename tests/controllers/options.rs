@@ -177,9 +177,11 @@ mod settings {
         assert_eq!(p.on_key(KeyCode::Enter), Action::EditDir);
         p.on_key(KeyCode::Down);
         assert_eq!(p.on_key(KeyCode::Enter), Action::ToggleNerd);
+        p.on_key(KeyCode::Down);
+        assert_eq!(p.on_key(KeyCode::Enter), Action::ToggleConfirmPlaylist);
         // The list ends rather than wrapping onto nothing.
         p.on_key(KeyCode::Down);
-        assert_eq!(p.cursor, 2);
+        assert_eq!(p.cursor, 3);
         assert_eq!(p.on_key(KeyCode::Esc), Action::Close);
     }
 

@@ -35,3 +35,15 @@ fn no_playlist_option_disables_expansion() {
 
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[test]
+fn a_listed_line_splits_into_url_and_title() {
+    use muxget::models::ytdlp::entry;
+    assert_eq!(
+        entry("https://y.com/watch?v=a\tSome Title"),
+        Some(("https://y.com/watch?v=a".into(), "Some Title".into()))
+    );
+    // An old yt-dlp, or an entry with no title, still gives a usable url.
+    assert_eq!(entry("https://y.com/watch?v=b"), Some(("https://y.com/watch?v=b".into(), String::new())));
+    assert_eq!(entry("[youtube:tab] Extracting URL"), None, "log noise is not an entry");
+}

@@ -79,6 +79,25 @@ pub enum Dialog {
     /// What a crawl found: the crawl, its links, which are picked, and the
     /// row the cursor is on.
     Crawled(Box<Crawl>, Vec<Found>, Vec<usize>, usize),
+    /// A listed playlist waiting to be picked from.
+    Playlist(Box<Pick>),
+}
+
+/// A playlist listed but not yet queued: its entries, which of them are
+/// picked, and the settings they will be queued with.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Pick {
+    /// `(url, title)` per entry, in playlist order.
+    pub entries: Vec<(String, String)>,
+    pub picked: Vec<usize>,
+    /// Row the cursor is on.
+    pub at: usize,
+    pub queue: usize,
+    /// What the add form was filled in with; the picker can still change the
+    /// directory before anything is queued.
+    pub over: Overrides,
+    /// Directory being typed, while it is being typed.
+    pub editing: Option<String>,
 }
 
 /// One entry of a which-key style menu: press the prefix, then this key.
@@ -141,6 +160,7 @@ impl App {
                 Action::NextTheme => self.set_theme(self.theme.next(&self.themes)),
                 Action::PrevTheme => self.set_theme(self.theme.prev(&self.themes)),
                 Action::ToggleNerd => self.toggle_nerd(),
+                Action::ToggleConfirmPlaylist => self.toggle_confirm_playlist(),
                 Action::EditDir => {
                     self.close_settings();
                     self.dialog = Some(Dialog::SetDir(self.dir.display().to_string()));
@@ -206,7 +226,6 @@ impl App {
                 }
             }
             Dialog::Crawled(crawl, found, mut picked, mut at) => {
-                let last = found.len().saturating_sub(1);
                 match key {
                     KeyCode::Enter => {
                         picked.sort_unstable();
@@ -214,24 +233,42 @@ impl App {
                         return;
                     }
                     KeyCode::Esc => return,
-                    KeyCode::Down | KeyCode::Char('j') => at = (at + 1).min(last),
-                    KeyCode::Up | KeyCode::Char('k') => at = at.saturating_sub(1),
-                    // Space picks one row, `a` every row or none.
-                    KeyCode::Char(' ') => match picked.iter().position(|i| *i == at) {
-                        Some(i) => {
-                            picked.remove(i);
-                        }
-                        None => picked.push(at),
-                    },
-                    KeyCode::Char('a') => {
-                        picked = match picked.len() == found.len() {
-                            true => Vec::new(),
-                            false => (0..found.len()).collect(),
-                        }
-                    }
-                    _ => {}
+                    key => pick_nav(key, found.len(), &mut picked, &mut at),
                 }
                 self.dialog = Some(Dialog::Crawled(crawl, found, picked, at));
+            }
+            Dialog::Playlist(mut pick) => {
+                // Typing a directory owns the keyboard until Enter or Esc.
+                if let Some(mut buf) = pick.editing.take() {
+                    match key {
+                        KeyCode::Enter => pick.over.dir = utils::expand_home(buf.trim()),
+                        KeyCode::Esc => {}
+                        KeyCode::Backspace => {
+                            buf.pop();
+                            pick.editing = Some(buf);
+                        }
+                        KeyCode::Char(c) => {
+                            buf.push(c);
+                            pick.editing = Some(buf);
+                        }
+                        _ => pick.editing = Some(buf),
+                    }
+                    self.dialog = Some(Dialog::Playlist(pick));
+                    return;
+                }
+                match key {
+                    KeyCode::Enter => {
+                        self.add_listed(&pick);
+                        return;
+                    }
+                    KeyCode::Esc => return,
+                    KeyCode::Char('d') => pick.editing = Some(pick.over.dir.clone()),
+                    key => {
+                        let len = pick.entries.len();
+                        pick_nav(key, len, &mut pick.picked, &mut pick.at);
+                    }
+                }
+                self.dialog = Some(Dialog::Playlist(pick));
             }
             Dialog::Edit(at, buf) => {
                 if let Some(text) = self.type_into(buf, key, |b| Dialog::Edit(at, b)) {
@@ -428,6 +465,28 @@ fn row_at(area: Option<Rect>, x: u16, y: u16) -> Option<usize> {
     let inner = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), area.height.saturating_sub(2));
     (x >= inner.x && x < inner.right() && y >= inner.y && y < inner.bottom())
         .then(|| (y - inner.y) as usize)
+}
+
+/// Cursor and selection keys shared by the two pick-from-a-list dialogs:
+/// space picks one row, `a` every row or none.
+pub fn pick_nav(key: KeyCode, len: usize, picked: &mut Vec<usize>, at: &mut usize) {
+    match key {
+        KeyCode::Down | KeyCode::Char('j') => *at = (*at + 1).min(len.saturating_sub(1)),
+        KeyCode::Up | KeyCode::Char('k') => *at = at.saturating_sub(1),
+        KeyCode::Char(' ') => match picked.iter().position(|i| i == at) {
+            Some(i) => {
+                picked.remove(i);
+            }
+            None => picked.push(*at),
+        },
+        KeyCode::Char('a') => {
+            *picked = match picked.len() == len {
+                true => Vec::new(),
+                false => (0..len).collect(),
+            }
+        }
+        _ => {}
+    }
 }
 
 /// One keypress into a multi-field form. Returns true when the form is done

@@ -351,3 +351,38 @@ fn manual_retry_requeues_failed_and_cancelled_but_not_done() {
     assert_eq!(app.downloads[1].status, Status::Queued);
     assert_eq!(app.downloads[2].status, Status::Done);
 }
+
+#[test]
+fn a_listed_playlist_queues_only_the_picked_entries() {
+    use crossterm::event::KeyCode;
+    use muxget::controllers::keys::Dialog;
+
+    let mut app = app_with(&[]);
+    app.queues[0].paused = true; // nothing may spawn during the test
+    app.listed(
+        DEFAULT,
+        vec![
+            ("https://y.com/watch?v=a".into(), "First".into()),
+            ("https://y.com/watch?v=b".into(), "Second".into()),
+            ("https://y.com/watch?v=c".into(), String::new()),
+        ],
+        Default::default(),
+    );
+    assert!(matches!(app.dialog, Some(Dialog::Playlist(_))), "the picker opens");
+
+    // Everything starts picked; space on the second row drops it.
+    app.on_key(KeyCode::Down);
+    app.on_key(KeyCode::Char(' '));
+    // A directory typed here applies to every entry queued from this list.
+    app.on_key(KeyCode::Char('d'));
+    for c in "/tmp".chars() {
+        app.on_key(KeyCode::Char(c));
+    }
+    app.on_key(KeyCode::Enter);
+    app.on_key(KeyCode::Enter);
+
+    assert!(app.dialog.is_none(), "Enter closes the picker");
+    let urls: Vec<&str> = app.downloads.iter().map(|d| d.url.as_str()).collect();
+    assert_eq!(urls, ["https://y.com/watch?v=a", "https://y.com/watch?v=c"]);
+    assert!(app.downloads.iter().all(|d| d.over.dir == "/tmp"));
+}

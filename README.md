@@ -213,7 +213,7 @@ applied once the backend reports a total and the download moves queue then.
 `s` opens the settings panel. `Tab` moves between its tabs, `j`/`k` move
 within one, `Esc` closes.
 
-- **general** — theme, download directory, nerd font icons.
+- **general** — theme, download directory, nerd font icons, confirm before dl playlist.
 - **backends** — a form over the common aria2c, yt-dlp and wget options:
   `Enter` toggles a switch or edits a value, `b` switches backend, `x` unsets
   one.

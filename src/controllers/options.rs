@@ -1,6 +1,7 @@
 use crossterm::event::KeyCode;
 
 use crate::models::option::{specs, Kind, OptSpec, Preset};
+use crate::models::rule::{self, Rule};
 use crate::utils::args;
 
 /// The options panel for one backend: a form over `models::option::specs`,
@@ -176,7 +177,15 @@ pub struct Settings {
     /// The crawler tab: the same form over `crawl.args`, which holds the
     /// defaults the crawl dialog opens with.
     pub crawl: Options,
+    /// The categories tab edits a copy; the app takes it back on close, so a
+    /// half-typed rule never routes anything.
+    pub rules: Vec<Rule>,
+    /// Rule field being typed into, as (row, text).
+    pub editing_rule: Option<(usize, String)>,
 }
+
+/// Rows on the categories tab: one header per rule, then its fields.
+pub const RULE_ROWS: usize = 1 + rule::FIELDS.len();
 
 pub const TABS: [&str; 4] = ["general", "backends", "crawler", "categories"];
 pub const GENERAL: [&str; 4] =
@@ -196,13 +205,22 @@ pub enum Action {
 }
 
 impl Settings {
-    pub fn open(tab: usize, backend: &'static str) -> Settings {
+    pub fn open(tab: usize, backend: &'static str, rules: Vec<Rule>) -> Settings {
         Settings {
             tab,
             cursor: 0,
             options: Options::open(backend),
             crawl: Options::open("crawl"),
+            rules,
+            editing_rule: None,
         }
+    }
+
+    /// The rule a row belongs to, and which of its fields the row is — `None`
+    /// for the header row that names the rule.
+    pub fn row_at(&self, row: usize) -> Option<(usize, Option<usize>)> {
+        let at = row / RULE_ROWS;
+        (at < self.rules.len()).then(|| (at, (row % RULE_ROWS).checked_sub(1)))
     }
 
     /// The form the current tab shows, if it is one of the two that has one.
@@ -219,8 +237,14 @@ impl Settings {
             0 => GENERAL.len(),
             1 => self.options.specs().len(),
             2 => self.crawl.specs().len(),
-            _ => 0,
+            _ => self.rules.len() * RULE_ROWS,
         }
+    }
+
+    /// A rule's field was typed into and accepted; empty clears the field.
+    fn accept_rule(&mut self, row: usize, text: &str) {
+        let Some((at, Some(field))) = self.row_at(row) else { return };
+        self.rules[at].set(field, text);
     }
 
     /// Switching backend saves the form first; the file is the state.
@@ -235,6 +259,24 @@ impl Settings {
     }
 
     pub fn on_key(&mut self, key: KeyCode) -> Action {
+        // A rule field being typed into owns the keyboard.
+        if let Some((row, mut buf)) = self.editing_rule.take() {
+            match key {
+                KeyCode::Enter => self.accept_rule(row, &buf),
+                KeyCode::Esc => {}
+                KeyCode::Backspace => {
+                    buf.pop();
+                    self.editing_rule = Some((row, buf));
+                }
+                KeyCode::Char(c) => {
+                    buf.push(c);
+                    self.editing_rule = Some((row, buf));
+                }
+                _ => self.editing_rule = Some((row, buf)),
+            }
+            return Action::None;
+        }
+
         // A form owns the keyboard while a value is being typed into it.
         let cursor = self.cursor;
         if let Some(form) = self.form().filter(|f| f.editing.is_some()) {
@@ -274,6 +316,31 @@ impl Settings {
                 let at = names.iter().position(|n| *n == self.options.backend).unwrap_or(0);
                 let next = names[(at + 1) % names.len()];
                 let _ = self.set_backend(next);
+                Action::None
+            }
+            // The categories tab is a list of rules, each unfolded into its
+            // fields: `n` adds one, `x` clears a field or deletes a rule.
+            (3, row, KeyCode::Char('n')) => {
+                let at = self.row_at(row).map_or(self.rules.len(), |(at, _)| at + 1);
+                self.rules.insert(at, Rule::default());
+                self.cursor = at * RULE_ROWS;
+                Action::None
+            }
+            (3, row, KeyCode::Enter) => {
+                if let Some((at, Some(field))) = self.row_at(row) {
+                    self.editing_rule = Some((row, self.rules[at].get(field)));
+                }
+                Action::None
+            }
+            (3, row, KeyCode::Char('x')) | (3, row, KeyCode::Delete) => {
+                match self.row_at(row) {
+                    Some((at, Some(field))) => self.rules[at].set(field, ""),
+                    Some((at, None)) => {
+                        self.rules.remove(at);
+                        self.cursor = row.min(self.rows().saturating_sub(1));
+                    }
+                    None => {}
+                }
                 Action::None
             }
             (1 | 2, _, key) => {

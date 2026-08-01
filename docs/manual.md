@@ -480,10 +480,22 @@ ignored rather than silently swallowing its matches.
 
 `min_size` cannot be answered before a download starts, so those rules are
 applied once the backend reports a total: the row starts where it was, then
-moves queue. Rules are read once at startup — edit the file and restart.
+moves queue.
 
-The categories tab of `s` shows the rules as they will be applied, so you can
-check what the file parsed into.
+The categories tab of `s` edits the same rules. Each one is unfolded into its
+fields under a header naming what it matches and where it sends things:
+
+| key | what it does |
+|---|---|
+| `n` | a new rule, below the one the cursor is in |
+| `Enter` | type into the field the cursor is on |
+| `x` | clear that field — or, on a rule's header row, delete the rule |
+
+Closing the panel writes `rules` in the same format hand-editing uses, and the
+app routes by the new rules immediately; there is no restart. A rule that
+decides nothing — no queue, no directory, no backend — is dropped rather than
+saved, since it would swallow every url it matched. Rules typed into the file
+by hand are read at startup as before.
 
 ## Settings and backend flags
 

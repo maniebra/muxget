@@ -73,3 +73,28 @@ fn the_list_shows_the_total_size() {
     assert!(screen.contains("size"), "the column is headed");
     assert!(screen.contains("1.4GiB"), "and carries the total: {screen}");
 }
+
+#[test]
+fn the_categories_tab_unfolds_each_rule_into_its_fields() {
+    use muxget::controllers::app::App;
+    use muxget::controllers::options::Settings;
+    use muxget::models::queue::{Queue, DEFAULT};
+    use muxget::models::rule::Rule;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir().join("muxget-tests-ui"));
+    let mut app = App::with_queues(".".into(), vec![Queue::new(DEFAULT, "default", 3)]);
+    let mut rule = Rule::default();
+    rule.set(0, "mkv");
+    rule.set(3, "video");
+    app.settings = Some(Settings::open(3, "aria2c", vec![rule]));
+
+    let mut term = Terminal::new(TestBackend::new(100, 24)).unwrap();
+    term.draw(|f| muxget::views::options::draw(f, &app)).unwrap();
+    let screen = term.backend().buffer().content().iter().map(|c| c.symbol()).collect::<String>();
+
+    assert!(screen.contains("rule 1"), "the rule is headed: {screen}");
+    assert!(screen.contains("extensions") && screen.contains("directory"), "fields are listed");
+    assert!(screen.contains("queue video"), "and the summary says where it sends things");
+}

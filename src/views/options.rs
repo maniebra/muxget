@@ -5,7 +5,8 @@ use ratatui::widgets::{Block, Cell, Clear, Padding, Paragraph, Row, Table, Table
 use ratatui::Frame;
 
 use crate::controllers::app::App;
-use crate::controllers::options::{Options, Settings, GENERAL, TABS};
+use crate::controllers::options::{Options, Settings, GENERAL, RULE_ROWS, TABS};
+use crate::models::rule::FIELDS as RULE_FIELDS;
 use crate::models::option::Kind;
 use crate::utils::{args, config_dir};
 
@@ -27,7 +28,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         0 => draw_general(f, app, panel, body),
         1 => draw_form(f, app, panel, &panel.options, body),
         2 => draw_form(f, app, panel, &panel.crawl, body),
-        _ => draw_categories(f, app, body),
+        _ => draw_categories(f, app, panel, body),
     }
 
     let path = match panel.tab {
@@ -152,51 +153,76 @@ fn draw_form(f: &mut Frame, app: &App, panel: &Settings, opts: &Options, area: R
 
 /// Rules are read from a file and shown as they will be applied; editing them
 /// is what a text editor is for.
-fn draw_categories(f: &mut Frame, app: &App, area: Rect) {
+fn draw_categories(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
     let t = &app.theme;
-    let mut lines: Vec<Line> = Vec::new();
-    for rule in &app.rules {
-        let mut what = Vec::new();
-        if !rule.extensions.is_empty() {
-            what.push(rule.extensions.join(", "));
-        }
-        if !rule.domains.is_empty() {
-            what.push(rule.domains.join(", "));
-        }
-        if let Some(min) = rule.min_size {
-            what.push(format!("over {}", crate::utils::parse::human(min)));
-        }
-        let mut to = Vec::new();
-        if let Some(q) = &rule.queue {
-            to.push(format!("queue {q}"));
-        }
-        if let Some(d) = &rule.directory {
-            to.push(d.clone());
-        }
-        if let Some(b) = &rule.backend {
-            to.push(b.clone());
-        }
-        lines.push(Line::from(vec![
-            Span::styled(format!("{:<34}", what.join(" + ")), Style::default().fg(t.fg)),
-            Span::styled(to.join(" · "), Style::default().fg(t.ok)),
-        ]));
+    if panel.rules.is_empty() {
+        f.render_widget(
+            Paragraph::new("\n  no rules yet — press `n` to add one")
+                .style(Style::default().bg(t.panel).fg(t.muted))
+                .block(
+                    Block::bordered()
+                        .border_style(Style::default().fg(t.muted).bg(t.panel))
+                        .style(Style::default().bg(t.panel))
+                        .padding(Padding::horizontal(1)),
+                ),
+            area,
+        );
+        return;
     }
-    if lines.is_empty() {
-        lines.push(Line::styled(
-            "no rules yet — new downloads land in the queue you are viewing",
-            Style::default().fg(t.muted),
-        ));
+    // One header row per rule, then a row per field of it — a single cursor
+    // over the lot, so there is no mode to be in.
+    let mut rows = Vec::new();
+    for (at, rule) in panel.rules.iter().enumerate() {
+        let (what, to) = rule.summary();
+        let what = match what.is_empty() {
+            true => "every url".to_string(),
+            false => what,
+        };
+        rows.push(
+            Row::new(vec![
+                Cell::from(format!("rule {}", at + 1)),
+                Cell::from(what).style(Style::default().fg(t.fg)),
+                Cell::from(to).style(Style::default().fg(t.ok)),
+            ])
+            .style(Style::default().bg(t.bg).add_modifier(Modifier::BOLD)),
+        );
+        for (i, name) in RULE_FIELDS.iter().enumerate() {
+            let row = at * RULE_ROWS + 1 + i;
+            let editing = panel.editing_rule.as_ref().filter(|(r, _)| *r == row);
+            let (value, color) = match (editing, rule.get(i)) {
+                (Some((_, buf)), _) => (format!("{buf}▏"), t.accent),
+                (None, v) if v.is_empty() => (format!("— {}", RULE_HINTS[i]), t.muted),
+                (None, v) => (v, t.ok),
+            };
+            rows.push(
+                Row::new(vec![
+                    Cell::from(""),
+                    Cell::from(format!("  {name}")),
+                    Cell::from(value).style(Style::default().fg(color)),
+                ])
+                .style(Style::default().bg(t.panel).fg(t.fg)),
+            );
+        }
     }
-    f.render_widget(
-        Paragraph::new(lines).style(Style::default().bg(t.panel).fg(t.fg)).block(
-            Block::bordered()
-                .border_style(Style::default().fg(t.muted).bg(t.panel))
-                .style(Style::default().bg(t.panel))
-                .padding(Padding::horizontal(1)),
-        ),
+    render_table(
+        f,
+        app,
+        panel.cursor,
+        rows.into_iter(),
+        [Constraint::Length(8), Constraint::Length(22), Constraint::Min(20)],
         area,
     );
 }
+
+/// What each rule field is for, shown while it is empty.
+const RULE_HINTS: [&str; 6] = [
+    "e.g. mp4,mkv",
+    "e.g. youtube.com",
+    "e.g. 500M — routes once the size is known",
+    "queue to send it to",
+    "directory to save it in",
+    "aria2c | yt-dlp | wget",
+];
 
 fn render_table<'a>(
     f: &mut Frame,
@@ -224,9 +250,11 @@ fn render_table<'a>(
 }
 
 fn hints<'a>(panel: &Settings, t: &crate::views::theme::Theme) -> Line<'a> {
-    let editing = panel.options.editing.is_some() || panel.crawl.editing.is_some();
+    let editing = panel.options.editing.is_some()
+        || panel.crawl.editing.is_some()
+        || panel.editing_rule.is_some();
     let keys: &[(&str, &str)] = match (panel.tab, editing) {
-        (1 | 2, true) => &[("Enter", "set"), ("Esc", "cancel"), ("empty", "unset")],
+        (1..=3, true) => &[("Enter", "set"), ("Esc", "cancel"), ("empty", "unset")],
         (0, _) => &[
             ("Tab", "next tab"),
             ("j/k", "move"),
@@ -246,6 +274,14 @@ fn hints<'a>(panel: &Settings, t: &crate::views::theme::Theme) -> Line<'a> {
             ("j/k", "move"),
             ("Enter", "toggle / edit"),
             ("x", "unset"),
+            ("Esc", "save & close"),
+        ],
+        (3, _) => &[
+            ("Tab", "next tab"),
+            ("j/k", "move"),
+            ("Enter", "edit"),
+            ("n", "new rule"),
+            ("x", "clear field / delete rule"),
             ("Esc", "save & close"),
         ],
         _ => &[("Tab", "next tab"), ("Esc", "close")],

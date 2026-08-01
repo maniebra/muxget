@@ -14,6 +14,71 @@ pub struct Rule {
     pub backend: Option<String>,
 }
 
+/// The rule's fields, in the order the panel shows them.
+pub const FIELDS: [&str; 6] =
+    ["extensions", "domains", "min_size", "queue", "directory", "backend"];
+
+impl Rule {
+    /// One field as text, for the panel and for the file.
+    pub fn get(&self, field: usize) -> String {
+        match field {
+            0 => self.extensions.join(", "),
+            1 => self.domains.join(", "),
+            2 => self.min_size.map(crate::utils::parse::human).unwrap_or_default(),
+            3 => self.queue.clone().unwrap_or_default(),
+            4 => self.directory.clone().unwrap_or_default(),
+            _ => self.backend.clone().unwrap_or_default(),
+        }
+    }
+
+    /// One field from text. Empty clears it, which is how a condition or a
+    /// destination is taken back off a rule.
+    pub fn set(&mut self, field: usize, value: &str) {
+        let value = value.trim();
+        let listed = || {
+            value
+                .split(',')
+                .map(|v| v.trim().trim_start_matches('.').to_lowercase())
+                .filter(|v| !v.is_empty())
+                .collect()
+        };
+        let text = || (!value.is_empty()).then(|| value.to_string());
+        match field {
+            0 => self.extensions = listed(),
+            1 => self.domains = listed(),
+            2 => self.min_size = bytes(value),
+            3 => self.queue = text(),
+            4 => self.directory = text(),
+            _ => self.backend = text(),
+        }
+    }
+
+    /// What the rule matches and where it sends it, for one line of display.
+    pub fn summary(&self) -> (String, String) {
+        let mut what = Vec::new();
+        if !self.extensions.is_empty() {
+            what.push(self.extensions.join(", "));
+        }
+        if !self.domains.is_empty() {
+            what.push(self.domains.join(", "));
+        }
+        if let Some(min) = self.min_size {
+            what.push(format!("over {}", crate::utils::parse::human(min)));
+        }
+        let mut to = Vec::new();
+        if let Some(q) = &self.queue {
+            to.push(format!("queue {q}"));
+        }
+        if let Some(d) = &self.directory {
+            to.push(d.clone());
+        }
+        if let Some(b) = &self.backend {
+            to.push(b.clone());
+        }
+        (what.join(" + "), to.join(" · "))
+    }
+}
+
 impl Rule {
     /// Does the url alone satisfy this rule? A `min_size` is not answered
     /// here — see [`Rule::wants_size`].
@@ -67,6 +132,40 @@ pub fn parse(text: &str) -> Vec<Rule> {
     // A rule that decides nothing would silently swallow its matches.
     rules.retain(|r| r.queue.is_some() || r.directory.is_some() || r.backend.is_some());
     rules
+}
+
+/// The rules as a file, in the same subset of TOML `parse` reads. Written
+/// whenever the panel changes one, so hand-editing and the panel agree.
+pub fn render(rules: &[Rule]) -> String {
+    let mut text = String::from("# muxget routing rules\n");
+    for rule in rules {
+        text.push_str("\n[[rule]]\n");
+        for (i, name) in FIELDS.iter().enumerate() {
+            let value = rule.get(i);
+            if value.is_empty() {
+                continue;
+            }
+            text.push_str(&match i {
+                // Lists keep their brackets; everything else is one string.
+                0 | 1 => format!("{name} = [{}]\n", quoted_list(&value)),
+                _ => format!("{name} = \"{value}\"\n"),
+            });
+        }
+    }
+    text
+}
+
+pub fn save(rules: &[Rule]) -> std::io::Result<()> {
+    std::fs::create_dir_all(config_dir())?;
+    std::fs::write(config_dir().join("rules"), render(rules))
+}
+
+fn quoted_list(value: &str) -> String {
+    value
+        .split(',')
+        .map(|v| format!("\"{}\"", v.trim()))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn unquote(value: &str) -> String {

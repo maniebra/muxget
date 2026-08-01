@@ -347,7 +347,9 @@ impl App {
             KeyCode::Char('q') => return true,
             KeyCode::Char(c @ ('g' | 'i' | 'Z')) => self.pending = Some(c),
             // Settings are one panel, not a menu of them.
-            KeyCode::Char('s') => self.settings = Some(Settings::open(0, "aria2c")),
+            KeyCode::Char('s') => {
+                self.settings = Some(Settings::open(0, "aria2c", self.rules.clone()))
+            }
             KeyCode::Char('a') => self.dialog = Some(Dialog::Add(Form::default())),
             KeyCode::Char('c') => self.dialog = Some(Dialog::Crawl(Form::default())),
             KeyCode::Char('e') => {

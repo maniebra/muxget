@@ -220,7 +220,9 @@ within one, `Esc` closes.
   one.
 - **crawler** — the defaults the crawl dialog opens with: depth, extensions,
   size range, and the off-host / under-path / no-robots / flat switches.
-- **categories** — the routing rules as they will be applied.
+- **categories** — the routing rules, fully editable: `n` new rule, `Enter`
+  edit a field, `x` clear it or delete the rule. Saved to `rules` on close and
+  applied without a restart.
 
 Everything is stored as plain flags in `~/.config/muxget/aria2c.args`,
 `yt-dlp.args`, `wget.args` and `crawl.args`, passed to the tool verbatim and appended last, so they override

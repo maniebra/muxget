@@ -178,7 +178,7 @@ impl App {
 
     /// Charge a queue for what it has moved since the last tick. Reported
     /// speed integrated over the tick, so the count drifts a few percent.
-    // ponytail: speed × elapsed, exact byte counters if a quota needs to be tight.
+    /// speed × elapsed, exact byte counters if a quota needs to be tight.
     pub fn charge_quotas(&mut self, secs: f64) {
         for at in 0..self.queues.len() {
             if self.queues[at].quota.is_none() {

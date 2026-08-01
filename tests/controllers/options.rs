@@ -173,7 +173,7 @@ mod settings {
     /// A throwaway config dir: the panel reads and writes real files.
     fn open(tab: usize, backend: &'static str) -> Settings {
         std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir().join("muxget-tests"));
-        let mut panel = Settings::open(tab, backend);
+        let mut panel = Settings::open(tab, backend, Vec::new());
         panel.options.pairs.clear();
         panel
     }
@@ -246,5 +246,81 @@ mod settings {
         p.on_key(KeyCode::Char('l'));
         assert_eq!(TABS[p.tab], "backends");
         assert_eq!(p.options.editing.as_deref(), Some("l"));
+    }
+}
+
+#[cfg(test)]
+mod categories {
+    use crossterm::event::KeyCode;
+    use muxget::controllers::options::{Settings, RULE_ROWS};
+    use muxget::models::rule::{self, Rule};
+
+    fn panel() -> Settings {
+        std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir().join("muxget-tests-rules"));
+        // Tab 3 is categories.
+        Settings::open(3, "aria2c", Vec::new())
+    }
+
+    fn typed(p: &mut Settings, keys: &str) {
+        for c in keys.chars() {
+            p.on_key(KeyCode::Char(c));
+        }
+    }
+
+    #[test]
+    fn a_rule_can_be_built_edited_and_removed_from_the_panel() {
+        let mut p = panel();
+        assert_eq!(p.rows(), 0, "nothing to walk before the first rule");
+
+        // `n` adds a rule and puts the cursor on it.
+        p.on_key(KeyCode::Char('n'));
+        assert_eq!(p.rules.len(), 1);
+        assert_eq!(p.rows(), RULE_ROWS, "a header row plus one per field");
+
+        // Down onto `extensions`, Enter to type into it.
+        p.on_key(KeyCode::Down);
+        p.on_key(KeyCode::Enter);
+        typed(&mut p, ".MP4, mkv");
+        p.on_key(KeyCode::Enter);
+        assert_eq!(p.rules[0].extensions, ["mp4", "mkv"], "dots and case are cleaned up");
+
+        // The destination fields are plain text.
+        p.cursor = 4; // queue
+        p.on_key(KeyCode::Enter);
+        typed(&mut p, "video");
+        p.on_key(KeyCode::Enter);
+        assert_eq!(p.rules[0].queue.as_deref(), Some("video"));
+
+        // Esc abandons what was being typed.
+        p.on_key(KeyCode::Enter);
+        typed(&mut p, "junk");
+        p.on_key(KeyCode::Esc);
+        assert_eq!(p.rules[0].queue.as_deref(), Some("video"), "unchanged");
+
+        // `x` clears a field, and on the header row deletes the whole rule.
+        p.on_key(KeyCode::Char('x'));
+        assert_eq!(p.rules[0].queue, None);
+        p.cursor = 0;
+        p.on_key(KeyCode::Char('x'));
+        assert!(p.rules.is_empty());
+    }
+
+    #[test]
+    fn rules_round_trip_through_the_file_the_panel_writes() {
+        let mut rule = Rule::default();
+        rule.set(0, "mp4, mkv");
+        rule.set(1, "YouTube.com");
+        rule.set(2, "500M");
+        rule.set(3, "video");
+        rule.set(4, "/tmp/video");
+        rule.set(5, "yt-dlp");
+
+        let back = rule::parse(&rule::render(&[rule.clone()]));
+        assert_eq!(back, vec![rule], "what the panel writes is what it reads");
+
+        // A rule that decides nothing is not a rule; parse drops it.
+        let mut empty = Rule::default();
+        empty.set(0, "iso");
+        assert!(rule::parse(&rule::render(&[empty])).is_empty());
     }
 }

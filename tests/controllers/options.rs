@@ -22,6 +22,34 @@ fn go_to(p: &mut Options, flag: &str) {
 }
 
 #[test]
+fn the_quality_choice_cycles_through_its_presets() {
+    use muxget::models::option::QUALITY;
+
+    let mut p = Options { backend: "yt-dlp", cursor: 0, pairs: Vec::new(), editing: None };
+    go_to(&mut p, "--format");
+
+    // Unset lands on the first preset, then walks the list and wraps.
+    p.on_key(KeyCode::Char(' '));
+    assert_eq!(p.value("--format"), Some(QUALITY[0].value));
+    p.on_key(KeyCode::Char(' '));
+    assert_eq!(p.value("--format"), Some(QUALITY[1].value));
+    assert_eq!(p.preset("--format", QUALITY).map(|q| q.label), Some("1080p"));
+    for _ in 1..QUALITY.len() {
+        p.on_key(KeyCode::Char(' '));
+    }
+    assert_eq!(p.value("--format"), Some(QUALITY[0].value), "the list wraps");
+
+    // A hand-written selector is kept until the user cycles past it.
+    p.pairs = vec![("--format".into(), "bestvideo".into())];
+    assert!(p.preset("--format", QUALITY).is_none(), "not one of ours");
+    p.on_key(KeyCode::Char('x'));
+    assert_eq!(p.value("--format"), None, "x clears it like any other flag");
+
+    // Short forms are what yt-dlp cannot read; the specs use long ones.
+    assert!(p.specs().iter().all(|s| !s.flag.starts_with("-f") && s.flag != "-o"));
+}
+
+#[test]
 fn toggling_a_flag_option_adds_and_removes_it() {
     let mut p = panel();
     go_to(&mut p, "--check-integrity");

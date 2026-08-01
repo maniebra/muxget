@@ -1,6 +1,6 @@
 use crossterm::event::KeyCode;
 
-use crate::models::option::{specs, Kind, OptSpec};
+use crate::models::option::{specs, Kind, OptSpec, Preset};
 use crate::utils::args;
 
 /// The options panel for one backend: a form over `models::option::specs`,
@@ -61,6 +61,26 @@ impl Options {
         self.pairs.retain(|(f, _)| f != name);
     }
 
+    /// The preset a flag's current value names, if it is one of them.
+    pub fn preset<'a>(&self, flag: &str, presets: &'a [Preset]) -> Option<&'a Preset> {
+        let value = self.value(flag)?;
+        presets.iter().find(|p| p.value == value)
+    }
+
+    /// Step to the next preset, wrapping. An unset flag — or one holding a
+    /// hand-written value — lands on the first one rather than losing its
+    /// place, so cycling never silently drops what someone typed twice.
+    fn cycle(&mut self, flag: &str, presets: &[Preset]) {
+        let next = match self.preset(flag, presets) {
+            Some(current) => {
+                let at = presets.iter().position(|p| p == current).unwrap_or(0);
+                (at + 1) % presets.len()
+            }
+            None => 0,
+        };
+        self.set(flag, presets[next].value);
+    }
+
     pub fn toggle(&mut self, flag: &str) {
         if self.is_set(flag) {
             self.unset(flag);
@@ -82,7 +102,12 @@ impl Options {
         let Some(spec) = self.specs().get(self.cursor) else {
             return true;
         };
-        let (flag, kind_is_value) = (spec.flag, spec.kind == Kind::Value);
+        let flag = spec.flag;
+        let kind_is_value = spec.kind == Kind::Value;
+        let presets = match spec.kind {
+            Kind::Choice(presets) => Some(presets),
+            _ => None,
+        };
 
         // Editing a value takes the keyboard until Enter or Esc.
         if let Some(mut buf) = self.editing.take() {
@@ -117,13 +142,13 @@ impl Options {
             KeyCode::Char('g') => self.cursor = 0,
             KeyCode::Char('G') => self.cursor = self.specs().len() - 1,
             KeyCode::Char('x') | KeyCode::Delete => self.unset(flag),
-            KeyCode::Enter | KeyCode::Char(' ') => {
-                if kind_is_value {
-                    self.editing = Some(self.value(flag).unwrap_or_default().to_string());
-                } else {
-                    self.toggle(flag);
+            KeyCode::Enter | KeyCode::Char(' ') => match presets {
+                Some(presets) => self.cycle(flag, presets),
+                None if kind_is_value => {
+                    self.editing = Some(self.value(flag).unwrap_or_default().to_string())
                 }
-            }
+                None => self.toggle(flag),
+            },
             _ => {}
         }
         false

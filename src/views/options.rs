@@ -112,8 +112,19 @@ fn draw_backend(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
             (_, _, Some(buf)) => ("▸".into(), format!("{buf}▏"), t.accent),
             (Kind::Flag, _, _) if opts.is_set(spec.flag) => ("[x]".into(), String::new(), t.ok),
             (Kind::Flag, _, _) => ("[ ]".into(), String::new(), t.muted),
+            (Kind::Choice(presets), Some(v), _) => (
+                "▸".into(),
+                // A hand-written selector is shown as it is, not guessed at.
+                match opts.preset(spec.flag, presets) {
+                    Some(preset) => preset.label.to_string(),
+                    None => format!("custom: {v}"),
+                },
+                t.ok,
+            ),
             (Kind::Value, Some(v), _) => ("▸".into(), v.to_string(), t.ok),
-            (Kind::Value, None, _) => (" ".to_string(), format!("— {}", spec.hint), t.muted),
+            (Kind::Value | Kind::Choice(_), None, _) => {
+                (" ".to_string(), format!("— {}", spec.hint), t.muted)
+            }
         };
         Row::new(vec![
             Cell::from(mark).style(Style::default().fg(color)),

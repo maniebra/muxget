@@ -469,10 +469,21 @@ check what the file parsed into.
 Backend options are stored as plain flags, one file per backend:
 
 ```sh
+# ~/.config/muxget/yt-dlp.args
+--format=bv*[height<=1080]+ba/b[height<=1080]
+
 # ~/.config/muxget/aria2c.args
 --split=16 --max-connection-per-server=16
 --max-download-limit=2M
 ```
+
+The yt-dlp form opens with **video quality**, which is a short list rather
+than a flag to type: `space` cycles best available → 1080p → 720p → 480p →
+360p → smallest file → audio only, and `x` clears it so yt-dlp picks. Each one
+writes a `--format` selector that asks for the best video at or below that
+height plus the best audio, falling back to a single combined file on sites
+that offer nothing else. A selector typed by hand is shown as `custom: …` and
+left alone until you cycle past it.
 
 The file is the state, so hand-editing works alongside the panel. Flags the
 panel has no entry for are kept and shown read-only rather than dropped, which

@@ -12,9 +12,33 @@ pub struct OptSpec {
 pub enum Kind {
     Flag,
     Value,
+    /// A short list of named settings for a flag whose real value nobody
+    /// wants to type. Space cycles through them; `x` clears the flag.
+    Choice(&'static [Preset]),
 }
 
-use Kind::{Flag, Value};
+/// One entry of a `Choice`: what the user reads, and what the backend gets.
+#[derive(PartialEq)]
+pub struct Preset {
+    pub label: &'static str,
+    pub value: &'static str,
+}
+
+use Kind::{Choice, Flag, Value};
+
+/// Video quality as a yt-dlp format selector. Each one asks for the best
+/// video at or below a height plus the best audio, falling back to whatever
+/// single file comes closest — the `/b` half matters on sites that do not
+/// offer separate streams.
+pub const QUALITY: &[Preset] = &[
+    Preset { label: "best available", value: "bv*+ba/b" },
+    Preset { label: "1080p", value: "bv*[height<=1080]+ba/b[height<=1080]" },
+    Preset { label: "720p", value: "bv*[height<=720]+ba/b[height<=720]" },
+    Preset { label: "480p", value: "bv*[height<=480]+ba/b[height<=480]" },
+    Preset { label: "360p", value: "bv*[height<=360]+ba/b[height<=360]" },
+    Preset { label: "smallest file", value: "wv*+wa/w" },
+    Preset { label: "audio only", value: "ba/b" },
+];
 
 pub const ARIA2: &[OptSpec] = &[
     OptSpec { flag: "--split", label: "connections per download", kind: Value, hint: "1-16" },
@@ -36,8 +60,10 @@ pub const ARIA2: &[OptSpec] = &[
 ];
 
 pub const YTDLP: &[OptSpec] = &[
-    OptSpec { flag: "-f", label: "format selector", kind: Value, hint: "e.g. bv*+ba/b" },
-    OptSpec { flag: "-o", label: "output template", kind: Value, hint: "%(title)s.%(ext)s" },
+    // Long forms: yt-dlp reads `--format=x`, but `-f=x` would hand it the
+    // literal `=x` and silently download the default quality instead.
+    OptSpec { flag: "--format", label: "video quality", kind: Choice(QUALITY), hint: "space cycles" },
+    OptSpec { flag: "--output", label: "output template", kind: Value, hint: "%(title)s.%(ext)s" },
     OptSpec { flag: "--limit-rate", label: "speed limit", kind: Value, hint: "e.g. 2M" },
     OptSpec { flag: "--retries", label: "retries", kind: Value, hint: "number or infinite" },
     OptSpec { flag: "--cookies-from-browser", label: "cookies from browser", kind: Value, hint: "firefox|chrome|…" },

@@ -146,10 +146,41 @@ fn the_spider_stays_on_the_host_without_being_trapped_under_the_start_path() {
     assert!(args.contains("--domains=x.com"), "the host is still the boundary");
     assert!(!args.contains("--no-parent"), "siblings of the start page are reachable");
 
+    // The site's crawling rules are honoured unless the crawl says otherwise.
+    assert!(!args.contains("robots=off"), "robots.txt is respected by default");
+    let rude = Crawl { ignore_robots: true, ..crawl.clone() };
+    let rude = format!("{:?}", rude.spider_command());
+    assert!(rude.contains("-e") && rude.contains("robots=off"));
+    assert!(
+        Crawl { ignore_robots: true, ..crawl.clone() }.mirror_args().join(" ").contains("robots=off"),
+        "and a mirror gets the same treatment"
+    );
+
     let under = Crawl { under_path: true, ..crawl.clone() };
     assert!(format!("{:?}", under.spider_command()).contains("--no-parent"), "opt-in still works");
 
     let anywhere = Crawl { same_domain: false, ..crawl };
     let args = format!("{:?}", anywhere.spider_command());
     assert!(args.contains("--span-hosts") && !args.contains("--domains="));
+}
+
+#[test]
+fn the_options_field_reads_as_words() {
+    use muxget::controllers::crawl::from_form;
+    use muxget::controllers::keys::Form;
+
+    let form = |options: &str| {
+        let mut f = Form::default();
+        f.fields[0] = "https://x.com/docs/".into();
+        f.fields[6] = options.into();
+        from_form(&f)
+    };
+
+    let plain = form("");
+    assert!(plain.same_domain && !plain.under_path && !plain.ignore_robots && !plain.flat);
+
+    let all = form("Any-Domain under-path no-robots flat offline");
+    assert!(!all.same_domain && all.under_path && all.ignore_robots && all.flat && all.offline);
+    // The other spelling of the same switch.
+    assert!(form("ignore-robots").ignore_robots);
 }

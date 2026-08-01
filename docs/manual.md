@@ -353,7 +353,7 @@ minute-resolution window needs.
 | include | url patterns to keep |
 | exclude | url patterns to drop |
 | size min-max | `1M-500M` |
-| options | `any-domain`, `under-path`, `flat`, `offline` |
+| options | `any-domain`, `under-path`, `no-robots`, `flat`, `offline` |
 
 Patterns are comma separated. One containing `*` is matched as a glob and
 anchored at both ends; one without is matched as a substring, which is usually
@@ -366,6 +366,15 @@ underneath it, so restricting the crawl to the start url's own path makes it
 stop at the first page. `under-path` restricts it that way when that is what
 you want, and `any-domain` lets it follow links to other hosts — needed when a
 site hands its media off to a CDN or an archive, as MIT OpenCourseWare does.
+
+`no-robots` sets wget's `-e robots=off`, which drops the site's crawling rules
+— `robots.txt`, `<meta name="robots">` and `rel="nofollow"` — that wget honours
+as one policy. Those rules are usually written to keep search engines out of
+paths that are perfectly fine to fetch by hand, and a crawl that stops at the
+first `Disallow` finds nothing; they are also sometimes there to keep load off
+a server. Turning this on makes the crawl your responsibility: leave the depth
+low, keep the wait in the wget options, and do not point it at anything you
+have not been invited to download.
 
 ### Discovering links
 

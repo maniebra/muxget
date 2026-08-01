@@ -42,6 +42,9 @@ pub fn from_form(form: &Form) -> Crawl {
         same_domain: !options.contains("any-domain"),
         under_path: options.contains("under-path"),
         flat: options.contains("flat"),
+        // `no-robots` reads as the switch it is; `ignore-robots` is what
+        // people type when they do not remember which.
+        ignore_robots: options.contains("no-robots") || options.contains("ignore-robots"),
         offline: options.contains("offline"),
     }
 }

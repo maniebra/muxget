@@ -104,7 +104,7 @@ again.
 | extensions | `pdf,zip,mp3` — every type when empty |
 | include / exclude | url patterns, comma separated; `*` is a wildcard, anything else matches as a substring, and excludes win |
 | size min-max | `1M-500M`; a file the server gives no size for is kept |
-| options | `any-domain` to follow links off the host, `under-path` to stay under the start url, `flat` to skip the directory structure, `offline` to mirror instead of listing |
+| options | `any-domain` to follow links off the host, `under-path` to stay under the start url, `no-robots` to ignore the site's crawling rules, `flat` to skip the directory structure, `offline` to mirror instead of listing |
 
 Without `offline` the crawl walks the site without downloading anything and
 comes back with the list it found — one entry per url, sizes included. `space`

@@ -26,6 +26,11 @@ pub struct Crawl {
     pub under_path: bool,
     /// Drop the url's directories and save everything side by side.
     pub flat: bool,
+    /// Ignore the site's crawling rules: `robots.txt`, `<meta name=robots>`
+    /// and `rel=nofollow`, which wget honours as one policy. Off by default;
+    /// worth turning on when a rule written for search engines hides files
+    /// you were invited to download, and worth leaving off otherwise.
+    pub ignore_robots: bool,
     /// Mirror the site for offline reading — pages plus the stylesheets,
     /// scripts, images and fonts they need, with links rewritten to point at
     /// the local copies — instead of listing files to pick from.
@@ -52,6 +57,7 @@ impl Default for Crawl {
             same_domain: true,
             under_path: false,
             flat: false,
+            ignore_robots: false,
             offline: false,
         }
     }
@@ -79,6 +85,11 @@ impl Crawl {
         }
         if self.under_path {
             args.push("--no-parent".into());
+        }
+        if self.ignore_robots {
+            // `-e` sets a config directive; wget has no long flag for this.
+            args.push("-e".into());
+            args.push("robots=off".into());
         }
         if !self.exts.is_empty() {
             args.push(format!("--accept={}", self.exts.join(",")));

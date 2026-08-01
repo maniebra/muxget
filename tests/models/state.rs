@@ -176,3 +176,12 @@ fn a_running_pid_round_trips_so_the_next_run_can_kill_it() {
     // A stray pid with no download above it is ignored.
     assert!(State::parse("pid = 1\n").downloads.is_empty());
 }
+
+#[test]
+fn the_output_path_survives_a_restart() {
+    // Without it a finished yt-dlp row comes back named after its url tail.
+    let mut d = row(0, Status::Done, "https://y.com/watch?v=abc");
+    d.path = Some("/tmp/Some Video Title.mp4".into());
+    let back = State::parse(&State::render(std::path::Path::new("/tmp"), &[], &[d], false));
+    assert_eq!(back.downloads[0].path.as_deref(), Some(std::path::Path::new("/tmp/Some Video Title.mp4")));
+}

@@ -31,6 +31,9 @@ pub struct SavedDownload {
     /// Retries already spent, so a restart does not hand a hopeless download
     /// a fresh set of attempts.
     pub tries: u8,
+    /// Where the file landed, so a restored row keeps its name instead of
+    /// falling back to the url tail.
+    pub path: Option<PathBuf>,
 }
 
 fn path() -> PathBuf {
@@ -68,7 +71,7 @@ impl State {
 
     /// `dir = <path>`, `queue = <name>|<slots>|<schedule>|<id>|<paused>`,
     /// `download = <queue>|<status>|<percent>|<url>`, optionally followed by
-    /// `over = <dir>|<name>|<rate>|<user>|<backend>|<args>`, `pid = <n>`, `tries = <n>`
+    /// `over = <dir>|<name>|<rate>|<user>|<backend>|<args>`, `pid = <n>`, `tries = <n>`, `path = <path>`
     /// above them — own lines, so a url containing `|` stays the last unsplit
     /// field.
     /// A malformed line is skipped rather than losing the whole file.
@@ -126,11 +129,17 @@ impl State {
                         over: Overrides::default(),
                         pid: None,
                         tries: 0,
+                        path: None,
                     });
                 }
                 "pid" => {
                     if let Some(last) = state.downloads.last_mut() {
                         last.pid = value.trim().parse().ok();
+                    }
+                }
+                "path" => {
+                    if let Some(last) = state.downloads.last_mut() {
+                        last.path = Some(PathBuf::from(value));
                     }
                 }
                 "tries" => {
@@ -182,6 +191,9 @@ impl State {
             ));
             if let Some(pid) = d.pid {
                 text.push_str(&format!("pid = {pid}\n"));
+            }
+            if let Some(path) = &d.path {
+                text.push_str(&format!("path = {}\n", path.display()));
             }
             if d.tries > 0 {
                 text.push_str(&format!("tries = {}\n", d.tries));

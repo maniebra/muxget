@@ -204,7 +204,7 @@ impl App {
                     percent: if s.status == Status::Done { 100.0 } else { s.percent },
                     ..Default::default()
                 },
-                path: None,
+                path: s.path.clone(),
                 pid: None,
                 tries: s.tries,
             });

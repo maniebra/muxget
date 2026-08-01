@@ -175,10 +175,10 @@ fn restore_rebuilds_last_sessions_list() {
     app.queues[1].paused = true;
 
     app.restore(&[
-        SavedDownload { over: Default::default(), pid: None, tries: 0, queue: 0, status: Status::Queued, percent: 42.0, url: "https://a.com/x.iso".into() },
-        SavedDownload { over: Default::default(), pid: None, tries: 0, queue: 1, status: Status::Done, percent: 0.0, url: "https://b.com/y.iso".into() },
-        SavedDownload { over: Default::default(), pid: None, tries: 0, queue: 9, status: Status::Queued, percent: 0.0, url: "https://c.com/z.iso".into() },
-        SavedDownload { over: Default::default(), pid: None, tries: 0, queue: 0, status: Status::Queued, percent: 0.0, url: "not a url".into() },
+        SavedDownload { over: Default::default(), pid: None, tries: 0, path: None, queue: 0, status: Status::Queued, percent: 42.0, url: "https://a.com/x.iso".into() },
+        SavedDownload { over: Default::default(), pid: None, tries: 0, path: None, queue: 1, status: Status::Done, percent: 0.0, url: "https://b.com/y.iso".into() },
+        SavedDownload { over: Default::default(), pid: None, tries: 0, path: None, queue: 9, status: Status::Queued, percent: 0.0, url: "https://c.com/z.iso".into() },
+        SavedDownload { over: Default::default(), pid: None, tries: 0, path: None, queue: 0, status: Status::Queued, percent: 0.0, url: "not a url".into() },
     ]);
 
     assert_eq!(app.downloads.len(), 3, "the unroutable url is dropped");
@@ -296,6 +296,7 @@ fn a_pause_and_its_spent_retries_survive_a_restart() {
         over: Default::default(),
         pid: None,
         tries: 2,
+        path: None,
         queue: 0,
         status: Status::Paused,
         percent: 40.0,

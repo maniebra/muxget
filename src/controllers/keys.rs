@@ -111,6 +111,7 @@ pub const ITEM_MENU: &[MenuItem] = &[
     MenuItem { key: 'o', label: "open" },
     MenuItem { key: 'f', label: "open containing folder" },
     MenuItem { key: 'F', label: "force restart (torrents)" },
+    MenuItem { key: 't', label: "retry (failed or cancelled)" },
 ];
 
 pub fn menu_for(prefix: char) -> Option<(&'static str, &'static [MenuItem])> {
@@ -313,6 +314,7 @@ impl App {
                 }
             }
             ('i', 'F') => self.force_restart(self.selected),
+            ('i', 't') => self.retry(self.selected),
             ('i', 'o') => self.open_item(self.selected),
             ('i', 'f') => self.reveal_item(self.selected),
             ('g', 'n') => self.dialog = Some(Dialog::QueueNew(String::new())),

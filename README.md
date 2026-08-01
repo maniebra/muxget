@@ -139,6 +139,7 @@ Crawl-wide wget settings — user agent, rate limit, `robots.txt`, extra headers
 | `ir` `iR` | remove / remove with its file |
 | `io` `if` | open / open containing folder |
 | `iF` | force restart (torrents) |
+| `it` | retry a failed or cancelled download |
 
 ## Queues
 

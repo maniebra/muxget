@@ -217,6 +217,7 @@ it and type the password again.
 | `io` | open the file with the desktop's handler |
 | `if` | open the folder it is in |
 | `iF` | force restart a torrent |
+| `it` | retry a failed or cancelled download |
 
 **Pausing** sends `SIGSTOP` to the backend process. The process, its
 connections and its partial file all stay; the slot it held is freed and goes
@@ -658,6 +659,7 @@ metadata arrives. The sizes are the reliable part until then.
 | `io` | open |
 | `if` | open containing folder |
 | `iF` | force restart (torrents) |
+| `it` | retry (failed or cancelled) |
 
 ### Dialogs
 

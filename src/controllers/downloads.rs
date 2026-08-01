@@ -440,6 +440,21 @@ impl App {
         self.pump();
     }
 
+    /// Requeue a failed or cancelled download by hand, ignoring the queue's
+    /// retry limit — the user asking is the decision. Tries reset so the
+    /// automatic retries get their full budget again.
+    pub fn retry(&mut self, at: usize) {
+        let Some(d) = self.downloads.get_mut(at) else { return };
+        if !matches!(d.status, Status::Failed(_) | Status::Cancelled) {
+            return;
+        }
+        d.tries = 0;
+        d.status = Status::Queued;
+        self.message = format!("retrying {}", self.downloads[at].url);
+        self.pump();
+        self.save_state();
+    }
+
     /// Sum of the running torrents' upload rates, in bytes/s.
     pub fn upload(&self) -> f64 {
         self.downloads

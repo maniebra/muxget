@@ -335,3 +335,18 @@ fn picked_links_are_queued_under_the_paths_their_urls_map_to() {
     app.add_found(&Crawl { flat: true, ..crawl }, &found, &[0]);
     assert_eq!(app.downloads[0].over.dir, "");
 }
+
+#[test]
+fn manual_retry_requeues_failed_and_cancelled_but_not_done() {
+    let mut app = app_with(&[Status::Failed("exit 1".into()), Status::Cancelled, Status::Done]);
+    app.queues[0].paused = true; // keep the requeued rows from spawning
+    app.downloads[0].tries = 9;
+    app.retry(0);
+    app.retry(1);
+    app.retry(2);
+    assert_eq!(app.downloads[0].status, Status::Queued);
+    // Past the queue's retry limit still retries by hand, with a fresh budget.
+    assert_eq!(app.downloads[0].tries, 0);
+    assert_eq!(app.downloads[1].status, Status::Queued);
+    assert_eq!(app.downloads[2].status, Status::Done);
+}

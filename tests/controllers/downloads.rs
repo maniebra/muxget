@@ -359,15 +359,16 @@ fn a_listed_playlist_queues_only_the_picked_entries() {
 
     let mut app = app_with(&[]);
     app.queues[0].paused = true; // nothing may spawn during the test
-    app.listed(
-        DEFAULT,
-        vec![
+    app.listed(muxget::models::ytdlp::Listing {
+        url: "https://y.com/playlist?list=x".into(),
+        queue: DEFAULT,
+        entries: vec![
             ("https://y.com/watch?v=a".into(), "First".into()),
             ("https://y.com/watch?v=b".into(), "Second".into()),
             ("https://y.com/watch?v=c".into(), String::new()),
         ],
-        Default::default(),
-    );
+        ..Default::default()
+    });
     assert!(matches!(app.dialog, Some(Dialog::Playlist(_))), "the picker opens");
 
     // Everything starts picked; space on the second row drops it.
@@ -385,4 +386,44 @@ fn a_listed_playlist_queues_only_the_picked_entries() {
     let urls: Vec<&str> = app.downloads.iter().map(|d| d.url.as_str()).collect();
     assert_eq!(urls, ["https://y.com/watch?v=a", "https://y.com/watch?v=c"]);
     assert!(app.downloads.iter().all(|d| d.over.dir == "/tmp"));
+}
+
+#[test]
+fn the_word_filter_hides_rows_and_decides_what_is_queued() {
+    use crossterm::event::KeyCode;
+    use muxget::controllers::keys::Dialog;
+    use muxget::models::ytdlp::Listing;
+
+    let mut app = app_with(&[]);
+    app.queues[0].paused = true;
+    app.listed(Listing {
+        url: "https://y.com/playlist?list=x".into(),
+        queue: DEFAULT,
+        entries: vec![
+            ("https://y.com/watch?v=a".into(), "Lecture 1: Sorting".into()),
+            ("https://y.com/watch?v=b".into(), "Recitation 1".into()),
+            ("https://y.com/watch?v=c".into(), "Lecture 2: Hashing".into()),
+        ],
+        ..Default::default()
+    });
+
+    // `/` filters by word: case is ignored and `-word` excludes.
+    app.on_key(KeyCode::Char('/'));
+    for c in "lecture -hashing".chars() {
+        app.on_key(KeyCode::Char(c));
+    }
+    app.on_key(KeyCode::Enter);
+    let Some(Dialog::Playlist(pick)) = &app.dialog else { panic!("the picker stays open") };
+    assert_eq!(pick.shown(), [0], "only the sorting lecture is left");
+    assert_eq!(pick.picked, [0], "what the filter reveals is what is picked");
+
+    // Space works on the row on screen, not on the entry underneath it.
+    app.on_key(KeyCode::Char(' '));
+    let Some(Dialog::Playlist(pick)) = &app.dialog else { panic!() };
+    assert!(pick.picked.is_empty());
+    app.on_key(KeyCode::Char('a'));
+
+    app.on_key(KeyCode::Enter);
+    let urls: Vec<&str> = app.downloads.iter().map(|d| d.url.as_str()).collect();
+    assert_eq!(urls, ["https://y.com/watch?v=a"], "hidden rows are never queued");
 }

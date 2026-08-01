@@ -6,7 +6,8 @@ use crate::controllers::downloads::Filter;
 use crate::views::ui;
 use crate::controllers::crawl;
 use crate::controllers::options::{Action, Settings};
-use crate::models::crawl::{Crawl, Found};
+use crate::models::crawl::{wild, Crawl, Found};
+use crate::models::ytdlp::Listing;
 use crate::models::download::Overrides;
 use crate::utils;
 
@@ -87,17 +88,45 @@ pub enum Dialog {
 /// picked, and the settings they will be queued with.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Pick {
-    /// `(url, title)` per entry, in playlist order.
-    pub entries: Vec<(String, String)>,
+    pub listing: Listing,
+    /// Entries picked, as indexes into `listing.entries`.
     pub picked: Vec<usize>,
-    /// Row the cursor is on.
+    /// Row the cursor is on, as a position in `shown`.
     pub at: usize,
-    pub queue: usize,
-    /// What the add form was filled in with; the picker can still change the
-    /// directory before anything is queued.
-    pub over: Overrides,
-    /// Directory being typed, while it is being typed.
-    pub editing: Option<String>,
+    /// Words the title must contain; `-word` must not appear and `*` is a
+    /// wildcard. Rows that do not match are hidden and stay unpicked.
+    pub words: String,
+    /// Field being typed into, while it is being typed.
+    pub editing: Option<(Field, String)>,
+}
+
+/// A picker field that takes text.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Field {
+    Dir,
+    Words,
+    Dates,
+}
+
+impl Pick {
+    /// Entries matching the word filter, as indexes. Every entry when no
+    /// words are typed, so this is the list to walk in every case.
+    pub fn shown(&self) -> Vec<usize> {
+        let words: Vec<&str> = self.words.split_whitespace().collect();
+        (0..self.listing.entries.len())
+            .filter(|i| {
+                let (url, title) = &self.listing.entries[*i];
+                let text = match title.is_empty() {
+                    true => url.to_lowercase(),
+                    false => title.to_lowercase(),
+                };
+                words.iter().all(|word| match word.strip_prefix('-') {
+                    Some(word) => !wild(word, &text),
+                    None => wild(word, &text),
+                })
+            })
+            .collect()
+    }
 }
 
 /// One entry of a which-key style menu: press the prefix, then this key.
@@ -238,20 +267,26 @@ impl App {
                 self.dialog = Some(Dialog::Crawled(crawl, found, picked, at));
             }
             Dialog::Playlist(mut pick) => {
-                // Typing a directory owns the keyboard until Enter or Esc.
-                if let Some(mut buf) = pick.editing.take() {
+                // A field being typed into owns the keyboard until Enter or Esc.
+                if let Some((field, mut buf)) = pick.editing.take() {
                     match key {
-                        KeyCode::Enter => pick.over.dir = utils::expand_home(buf.trim()),
+                        KeyCode::Enter => {
+                            if self.typed_into_picker(&mut pick, field, &buf) {
+                                // A new date range means listing again, and
+                                // the new list brings its own picker.
+                                return;
+                            }
+                        }
                         KeyCode::Esc => {}
                         KeyCode::Backspace => {
                             buf.pop();
-                            pick.editing = Some(buf);
+                            pick.editing = Some((field, buf));
                         }
                         KeyCode::Char(c) => {
                             buf.push(c);
-                            pick.editing = Some(buf);
+                            pick.editing = Some((field, buf));
                         }
-                        _ => pick.editing = Some(buf),
+                        _ => pick.editing = Some((field, buf)),
                     }
                     self.dialog = Some(Dialog::Playlist(pick));
                     return;
@@ -262,10 +297,19 @@ impl App {
                         return;
                     }
                     KeyCode::Esc => return,
-                    KeyCode::Char('d') => pick.editing = Some(pick.over.dir.clone()),
+                    KeyCode::Char('d') => {
+                        pick.editing = Some((Field::Dir, pick.listing.over.dir.clone()))
+                    }
+                    KeyCode::Char('/') => pick.editing = Some((Field::Words, pick.words.clone())),
+                    KeyCode::Char('t') => {
+                        pick.editing = Some((Field::Dates, pick.listing.dates.typed()))
+                    }
+                    // The list walked is the filtered one, so the cursor and
+                    // `a` only ever touch rows that are on screen.
                     key => {
-                        let len = pick.entries.len();
-                        pick_nav(key, len, &mut pick.picked, &mut pick.at);
+                        let shown = pick.shown();
+                        let mut at_row = pick.picked.iter().filter(|i| shown.contains(i)).count();
+                        pick_row(key, &shown, &mut pick.picked, &mut pick.at, &mut at_row);
                     }
                 }
                 self.dialog = Some(Dialog::Playlist(pick));
@@ -465,6 +509,39 @@ fn row_at(area: Option<Rect>, x: u16, y: u16) -> Option<usize> {
     let inner = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), area.height.saturating_sub(2));
     (x >= inner.x && x < inner.right() && y >= inner.y && y < inner.bottom())
         .then(|| (y - inner.y) as usize)
+}
+
+/// The picker's list keys, over the rows currently shown: the cursor is a
+/// position in `shown`, while what is picked is entry indexes.
+fn pick_row(
+    key: KeyCode,
+    shown: &[usize],
+    picked: &mut Vec<usize>,
+    at: &mut usize,
+    shown_picked: &mut usize,
+) {
+    match key {
+        KeyCode::Down | KeyCode::Char('j') => *at = (*at + 1).min(shown.len().saturating_sub(1)),
+        KeyCode::Up | KeyCode::Char('k') => *at = at.saturating_sub(1),
+        KeyCode::Char(' ') => {
+            let Some(entry) = shown.get(*at) else { return };
+            match picked.iter().position(|i| i == entry) {
+                Some(i) => {
+                    picked.remove(i);
+                }
+                None => picked.push(*entry),
+            }
+        }
+        KeyCode::Char('a') => {
+            // All of what is shown, or none of it; rows hidden by the word
+            // filter are left alone either way.
+            picked.retain(|i| !shown.contains(i));
+            if *shown_picked != shown.len() {
+                picked.extend_from_slice(shown);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Cursor and selection keys shared by the two pick-from-a-list dialogs:

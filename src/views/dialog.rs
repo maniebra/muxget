@@ -6,7 +6,7 @@ use ratatui::Frame;
 
 use crate::controllers::app::App;
 use crate::controllers::crawl::CRAWL_LABELS;
-use crate::controllers::keys::{menu_for, Dialog, Form, Pick, FORM_LABELS, SECRET_FIELDS};
+use crate::controllers::keys::{menu_for, Dialog, Field, Form, Pick, FORM_LABELS, SECRET_FIELDS};
 use crate::models::crawl::Found;
 use crate::utils::parse::human;
 use crate::views::theme::Theme;
@@ -120,8 +120,8 @@ pub fn draw(f: &mut Frame, app: &App) {
             "playlist entries",
             playlist_lines(t, pick),
             match pick.editing.is_some() {
-                true => "Enter set directory · Esc keep the old one",
-                false => "space pick · a all · d directory · Enter download · Esc cancel",
+                true => "Enter apply · Esc keep the old value",
+                false => "space pick · a all · / words · t dates · d directory · Enter download",
             },
         ),
         Dialog::QueueDelete(at) => (
@@ -357,31 +357,40 @@ fn found_lines<'a>(t: &Theme, found: &[Found], picked: &[usize], at: usize) -> V
 }
 
 fn playlist_lines<'a>(t: &Theme, pick: &Pick) -> Vec<Line<'a>> {
-    let dir = match pick.editing.as_ref() {
-        Some(buf) => format!("directory: {buf}▏"),
-        None => format!(
-            "directory: {}",
-            match pick.over.dir.is_empty() {
-                true => "(the download directory)",
-                false => &pick.over.dir,
-            }
-        ),
+    let shown = pick.shown();
+    // The field being typed into shows its cursor; the rest show their value.
+    let field = |which: Field, label: &str, value: &str, empty: &'static str| match pick.editing {
+        Some((f, ref buf)) if f == which => format!("{label}: {buf}▏"),
+        _ => format!("{label}: {}", if value.is_empty() { empty } else { value }),
     };
     let head = format!(
-        "{} entries · {} picked\n{dir}",
-        pick.entries.len(),
-        pick.picked.len()
+        "{} entries · {} shown · {} picked\n{}\n{}  ·  {}",
+        pick.listing.entries.len(),
+        shown.len(),
+        pick.picked.len(),
+        field(Field::Dir, "directory", &pick.listing.over.dir, "(the download directory)"),
+        field(Field::Words, "words", &pick.words, "(any title)"),
+        field(Field::Dates, "uploaded", &pick.listing.dates.typed(), "(any date)"),
     );
     // The title if yt-dlp knew one, the url otherwise.
-    let rows: Vec<String> = pick
-        .entries
+    let rows: Vec<String> = shown
         .iter()
-        .map(|(url, title)| match title.is_empty() {
-            true => url.clone(),
-            false => title.clone(),
+        .map(|i| {
+            let (url, title) = &pick.listing.entries[*i];
+            match title.is_empty() {
+                true => url.clone(),
+                false => title.clone(),
+            }
         })
         .collect();
-    pick_lines(t, head, &rows, &pick.picked, pick.at)
+    // `picked` counts entries, the rows on screen are the shown ones.
+    let picked: Vec<usize> = shown
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| pick.picked.contains(entry))
+        .map(|(row, _)| row)
+        .collect();
+    pick_lines(t, head, &rows, &picked, pick.at)
 }
 
 /// A pick-from-a-list body: a header, then one `[x] row` per entry with the

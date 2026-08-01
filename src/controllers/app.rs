@@ -161,7 +161,7 @@ impl App {
                     }
                 }
                 Update::Discovered(queue, url, over) => self.enqueue(&url, queue, over),
-                Update::Listed(queue, entries, over) => self.listed(queue, entries, over),
+                Update::Listed(listing) => self.listed(*listing),
                 Update::Crawled(crawl, found) => self.crawled(crawl, found),
                 Update::Notice(text) => self.message = text,
                 Update::Finished(id, s) => {

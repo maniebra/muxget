@@ -1,9 +1,10 @@
 use std::process::Stdio;
 
 use crate::controllers::app::App;
-use crate::controllers::keys::{Dialog, Pick};
+use crate::controllers::keys::{Dialog, Field, Pick};
 use crate::models::download::{Download, Overrides, Progress, Status, Update};
 use crate::models::state::SavedDownload;
+use crate::models::ytdlp::{DateRange, Listing};
 use crate::models::{self, aria2, backend, pick, queue, ytdlp};
 use crate::utils::parse::{bytes, for_each_line};
 
@@ -151,12 +152,26 @@ impl App {
     /// or the whole list as `Listed` when the user wants to pick from it.
     fn expand_playlist(&mut self, url: &str, over: Overrides) {
         let queue = self.queue().id;
-        let (tx, url) = (self.tx.clone(), url.to_string());
         let confirm = self.confirm_playlist;
-        self.message = format!("expanding playlist {url}…");
+        self.list_playlist(
+            Listing { url: url.to_string(), queue, over, ..Default::default() },
+            confirm,
+        );
+    }
+
+    /// Run the listing pass. Called again, with a date range this time, when
+    /// the picker asks for one.
+    pub(crate) fn list_playlist(&mut self, listing: Listing, confirm: bool) {
+        let tx = self.tx.clone();
+        let Listing { url, queue, over, dates, .. } = listing;
+        self.message = match dates.is_empty() {
+            true => format!("expanding playlist {url}…"),
+            // Every entry has to be opened for its date, so say so.
+            false => format!("reading upload dates for {url} — this is slower…"),
+        };
 
         std::thread::spawn(move || {
-            let mut child = match ytdlp::list_command(&url)
+            let mut child = match ytdlp::list_command(&url, &dates)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .stdin(Stdio::null())
@@ -186,7 +201,13 @@ impl App {
                 return;
             }
             let _ = match confirm {
-                true => tx.send(Update::Listed(queue, entries, over)),
+                true => tx.send(Update::Listed(Box::new(Listing {
+                    url,
+                    queue,
+                    over,
+                    dates,
+                    entries,
+                }))),
                 false => tx.send(Update::Notice(format!(
                     "queued {} entries from the playlist",
                     entries.len()
@@ -196,28 +217,55 @@ impl App {
     }
 
     /// A playlist came back listed rather than queued: show it to pick from.
-    pub fn listed(&mut self, queue: usize, entries: Vec<(String, String)>, over: Overrides) {
-        self.message = format!("{} entries — pick which to download", entries.len());
+    pub fn listed(&mut self, listing: Listing) {
+        if listing.entries.is_empty() {
+            self.message = format!("nothing in {} matched that date range", listing.url);
+            return;
+        }
+        self.message = format!("{} entries — pick which to download", listing.entries.len());
+        // Everything picked to start with: the common case is "all but a
+        // few", and `a` clears the lot for the opposite one.
         self.dialog = Some(Dialog::Playlist(Box::new(Pick {
-            // Everything picked to start with: the common case is "all but a
-            // few", and `a` clears the lot for the opposite one.
-            picked: (0..entries.len()).collect(),
-            entries,
+            picked: (0..listing.entries.len()).collect(),
+            listing,
             at: 0,
-            queue,
-            over,
+            words: String::new(),
             editing: None,
         })));
+    }
+
+    /// One of the picker's fields was typed into and accepted. Returns true
+    /// when the picker is gone — a date range is answered by yt-dlp, not by
+    /// the list already on screen, so it has to be listed again.
+    pub fn typed_into_picker(&mut self, pick: &mut Pick, field: Field, buf: &str) -> bool {
+        match field {
+            Field::Dir => pick.listing.over.dir = crate::utils::expand_home(buf.trim()),
+            Field::Words => {
+                pick.words = buf.trim().to_lowercase();
+                // The filter is the selection: what it hides is not queued,
+                // and what it reveals is picked and waiting.
+                pick.picked = pick.shown();
+                pick.at = 0;
+            }
+            Field::Dates => {
+                let mut listing = pick.listing.clone();
+                listing.dates = DateRange::parse(buf);
+                self.list_playlist(listing, true);
+                return true;
+            }
+        }
+        false
     }
 
     /// Queue the picked entries, each with the settings shown in the picker.
     pub fn add_listed(&mut self, pick: &Pick) {
         let mut picked: Vec<usize> = pick.picked.clone();
         picked.sort_unstable();
-        for (url, _) in picked.iter().filter_map(|i| pick.entries.get(*i)) {
-            self.enqueue(url, pick.queue, pick.over.clone());
+        for (url, _) in picked.iter().filter_map(|i| pick.listing.entries.get(*i)) {
+            self.enqueue(url, pick.listing.queue, pick.listing.over.clone());
         }
-        self.message = format!("queued {} of {} entries", picked.len(), pick.entries.len());
+        self.message =
+            format!("queued {} of {} entries", picked.len(), pick.listing.entries.len());
     }
 
     /// Rebuild last session's list. Ids are reassigned — the saved ones meant

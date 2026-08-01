@@ -197,7 +197,24 @@ Turn on **confirm before dl playlist** in settings › general and the entries
 are listed rather than queued: a picker opens with every entry checked, `space`
 drops or re-adds one, `a` clears or checks the lot, `d` types the directory
 they all land in, and `Enter` queues what is left. Entry titles are shown when
-yt-dlp reports them. Anything else — a rate cap, a user name — comes from the
+yt-dlp reports them.
+
+Two filters narrow a long channel down:
+
+| key | field | example |
+|---|---|---|
+| `/` | words the title must contain | `lecture -recitation`, `problem*set` |
+| `t` | upload date range, `from..to` | `2020-01-01..2023-12-31`, `now-6months..` |
+
+Words are matched against the title — the url when there is no title — case
+insensitively; one containing `*` is a glob, one starting with `-` must *not*
+appear. Hidden rows are never queued, and applying a filter picks everything it
+leaves on screen, so `/` then `Enter` is the whole job.
+
+Either end of the date range may be left off, and yt-dlp's own shorthand
+(`today`, `now-1week`, `20200101`) works as well as `2020-01-01`. A date range
+costs time: upload dates are not in a playlist's index, so yt-dlp reopens every
+entry to read one and the listing is re-run rather than filtered on screen. Anything else — a rate cap, a user name — comes from the
 add form, as it does without the picker, and per-row edits are still available
 after queueing.
 

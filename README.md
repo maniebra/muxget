@@ -214,6 +214,7 @@ applied once the backend reports a total and the download moves queue then.
 within one, `Esc` closes.
 
 - **general** — theme, download directory, nerd font icons, confirm before dl playlist.
+  With confirmation on, a playlist opens a picker: `/` filters by words in the title, `t` by upload date range, `space` picks, `Enter` queues.
 - **backends** — a form over the common aria2c, yt-dlp and wget options:
   `Enter` toggles a switch or edits a value, `b` switches backend, `x` unsets
   one.

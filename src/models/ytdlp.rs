@@ -25,14 +25,83 @@ pub fn expands_playlist(url: &str) -> bool {
 
 /// Lists the entries, one `<url>\t<title>` per line, without touching the
 /// media itself.
-pub fn list_command(url: &str) -> Command {
+///
+/// A date range costs the flat listing: upload dates are not in a playlist's
+/// index, so yt-dlp has to open every entry to know one. Without a range this
+/// is a single request for the whole playlist.
+pub fn list_command(url: &str, dates: &DateRange) -> Command {
     let mut c = Command::new("yt-dlp");
-    c.arg("--flat-playlist")
-        .arg("--ignore-errors")
-        .arg("--print")
-        .arg("%(url)s\t%(title)s")
-        .arg(url);
+    c.arg("--ignore-errors");
+    match dates.is_empty() {
+        true => {
+            c.arg("--flat-playlist").arg("--print").arg("%(url)s\t%(title)s");
+        }
+        false => {
+            // `url` is the media stream once an entry is opened for real; the
+            // page is what belongs in the download list.
+            c.arg("--print").arg("%(webpage_url)s\t%(title)s");
+            if !dates.after.is_empty() {
+                c.arg("--dateafter").arg(&dates.after);
+            }
+            if !dates.before.is_empty() {
+                c.arg("--datebefore").arg(&dates.before);
+            }
+        }
+    }
+    c.arg(url);
     c
+}
+
+/// A playlist listed but not yet queued, with everything needed to list it
+/// again under a different date range.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Listing {
+    pub url: String,
+    pub queue: usize,
+    pub over: Overrides,
+    pub dates: DateRange,
+    /// `(url, title)` per entry, in playlist order.
+    pub entries: Vec<(String, String)>,
+}
+
+/// An upload-date window, as yt-dlp spells one. Either end may be empty,
+/// which leaves that side open.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DateRange {
+    pub after: String,
+    pub before: String,
+}
+
+impl DateRange {
+    /// `<from>..<to>`, either side optional. Dates are passed to yt-dlp as
+    /// typed once the separators are gone, so its own shorthand — `today`,
+    /// `now-6months`, `20200101` — works as well as `2020-01-01`.
+    pub fn parse(text: &str) -> DateRange {
+        let (after, before) = text.trim().split_once("..").unwrap_or((text.trim(), ""));
+        DateRange { after: clean_date(after), before: clean_date(before) }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.after.is_empty() && self.before.is_empty()
+    }
+
+    /// The range as it goes back into the field it was typed in.
+    pub fn typed(&self) -> String {
+        match self.is_empty() {
+            true => String::new(),
+            false => format!("{}..{}", self.after, self.before),
+        }
+    }
+}
+
+/// `2020-01-01` is what people type; `20200101` is what yt-dlp reads. Its own
+/// relative forms contain `-` too, so only a plain date is stripped.
+fn clean_date(text: &str) -> String {
+    let text = text.trim();
+    match text.chars().all(|c| c.is_ascii_digit() || c == '-' || c == '/') {
+        true => text.replace(['-', '/'], ""),
+        false => text.to_string(),
+    }
 }
 
 /// One listed line as (url, title); the title is whatever yt-dlp knew, and

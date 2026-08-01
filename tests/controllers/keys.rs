@@ -255,3 +255,48 @@ fn rows_and_queues_can_be_reordered_from_the_keyboard() {
     assert_eq!(app.current, 0, "the queue moved left, and the view followed it");
     assert_eq!(app.queues[0].name, "media");
 }
+
+#[test]
+fn selection_marks_rows_and_operations_act_on_them() {
+    let mut app = app_with(&[Status::Running, Status::Running, Status::Running, Status::Running]);
+
+    // Space marks the row under the cursor.
+    app.on_key(KeyCode::Char(' '));
+    assert_eq!(app.marked, [0], "marks are download ids, not row numbers");
+
+    // `M` extends from the last mark to the cursor.
+    app.on_key(KeyCode::Down);
+    app.on_key(KeyCode::Down);
+    app.on_key(KeyCode::Char('M'));
+    assert_eq!(app.marked, [0, 1, 2], "the whole span, inclusive");
+
+    // An operation acts on every marked row, then the marks are dropped.
+    app.on_key(KeyCode::Char('p'));
+    let paused = app.downloads.iter().filter(|d| d.status == Status::Paused).count();
+    assert_eq!(paused, 3);
+    assert!(app.marked.is_empty(), "a finished operation clears the selection");
+
+    // With nothing marked, an operation is about the cursor row alone.
+    app.selected = 3;
+    app.on_key(KeyCode::Char('x'));
+    assert_eq!(app.downloads[3].status, Status::Cancelled);
+    assert_eq!(app.downloads[0].status, Status::Paused, "the others are untouched");
+
+    // `A` marks everything on screen, and again clears it.
+    app.on_key(KeyCode::Char('A'));
+    assert_eq!(app.marked.len(), 4);
+    app.on_key(KeyCode::Char('A'));
+    assert!(app.marked.is_empty());
+
+    // Deleting a selection removes exactly those rows, whatever their index.
+    app.selected = 1;
+    app.on_key(KeyCode::Char(' '));
+    app.selected = 3;
+    app.on_key(KeyCode::Char(' '));
+    app.on_key(KeyCode::Char('d'));
+    assert!(matches!(app.dialog, Some(Dialog::Delete(_))), "still asks first");
+    app.on_key(KeyCode::Char('y'));
+    let ids: Vec<usize> = app.downloads.iter().map(|d| d.id).collect();
+    assert_eq!(ids, [0, 2], "the marked ids are gone, the rest kept");
+    assert!(app.selected < app.downloads.len(), "the cursor stays in bounds");
+}

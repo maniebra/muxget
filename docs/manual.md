@@ -225,6 +225,25 @@ after queueing.
 Set `--no-playlist` in the yt-dlp options and expansion is skipped — muxget
 respects the choice and hands the url over whole.
 
+### Selecting rows
+
+`Space` marks the row under the cursor, `M` marks everything between the last
+mark and the cursor, and `A` marks every row on screen — or clears them all if
+they already are. Marked rows carry a bar in the left margin and the table
+title counts them.
+
+Every per-row operation then acts on the selection: `p` pauses or resumes,
+`x` stops, `d` deletes, `it` retries, `iR` deletes with the files. With nothing
+marked they act on the cursor row alone, exactly as before, so the selection is
+something you opt into.
+
+Marks are download ids rather than row numbers, so they survive sorting,
+filtering, queue switching and the rows moving under them. An operation clears
+the selection when it finishes, since it described rows that have just changed
+or gone.
+
+Note that `Space` used to pause; pausing is now `p` alone.
+
 ### Pasting
 
 `v` reads the system clipboard and shows what it found before anything is
@@ -719,10 +738,13 @@ metadata arrives. The sizes are the reliable part until then.
 | `v` | add the urls in the clipboard |
 | `c` | crawl a page |
 | `e` | edit the selected url (restarts it) |
-| `d` / `Del` | delete the selected download |
-| `p` / `Space` | pause or resume the selected download |
+| `d` / `Del` | delete the selection (asks first) |
+| `Space` / `m` | select or deselect the row under the cursor |
+| `M` | select every row from the last one selected to the cursor |
+| `A` | select every row on screen, or none if they all are |
+| `p` | pause or resume the selection |
 | `P` | pause or resume every queue |
-| `x` | stop it, keep the row |
+| `x` | stop the selection, keep the rows |
 | `j` `k` / `↓` `↑` | move the selection |
 | `J` `K` | move the download within its queue |
 | `[` `]` / `←` `→` | switch queue |

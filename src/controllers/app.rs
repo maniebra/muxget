@@ -31,6 +31,11 @@ pub struct App {
     pub queues: Vec<Queue>,
     /// Index into `queues` — the queue being viewed; new downloads land here.
     pub current: usize,
+    /// Marked rows, by download id — ids outlive the removals and reorderings
+    /// the marks have to survive. Empty means "act on the cursor row".
+    pub marked: Vec<usize>,
+    /// Where the last mark was made, so a range has somewhere to start.
+    pub anchor: Option<usize>,
     pub theme: Theme,
     /// Use nerd font glyphs for status icons.
     pub nerd: bool,
@@ -96,6 +101,8 @@ impl App {
             filter: Filter::All,
             queues,
             current: 0,
+            marked: Vec::new(),
+            anchor: None,
             next_id: 0,
             next_queue_id,
             theme: Theme::saved().unwrap_or_default(),

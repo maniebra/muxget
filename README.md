@@ -53,16 +53,22 @@ the saved values for that run only.
 | `a` | add a url |
 | `c` | crawl a page for links |
 | `e` | edit the selected url (restarts it) |
-| `d` | delete the selected download |
-| `p` or `Space` | pause / resume the selected download |
+| `d` | delete the selection (asks first) |
+| `Space` or `m` | select / deselect the row under the cursor |
+| `M` | select from the last mark to the cursor |
+| `A` | select every row on screen, or none |
+| `p` | pause / resume the selection |
 | `P` | pause / resume every queue |
-| `x` | stop it, keep the row |
+| `x` | stop the selection, keep the rows |
 | `j` / `k` | move the selection |
 | `J` / `K` | move the download within its queue |
 | `s` | settings |
 | `Tab` | cycle filter: all / active / done / failed |
 | `[` `]` | switch queue |
 | `q` or `ZZ` | quit |
+
+With nothing selected, `p`, `x`, `d`, `it` and `iR` act on the row under the
+cursor as before; select rows first and they act on all of them at once.
 
 The mouse works too: click a queue, a filter or a row to select it, and scroll
 over the queue list or the table to move through them. A dialog or the settings

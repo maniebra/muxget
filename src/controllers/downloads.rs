@@ -597,6 +597,85 @@ impl App {
         self.pump();
     }
 
+    /// Mark or unmark the row the cursor is on, and remember it as the place
+    /// a range would start from.
+    pub fn mark(&mut self) {
+        let Some(id) = self.downloads.get(self.selected).map(|d| d.id) else { return };
+        match self.marked.iter().position(|m| *m == id) {
+            Some(at) => {
+                self.marked.remove(at);
+            }
+            None => self.marked.push(id),
+        }
+        self.anchor = Some(id);
+        self.say_marked();
+    }
+
+    /// Mark every row between the last mark and the cursor, inclusive. With
+    /// nothing marked yet the cursor row is the anchor, so `M` alone marks one
+    /// row and the next `M` extends from it.
+    pub fn mark_range(&mut self) {
+        let rows = self.visible();
+        let Some(to) = rows.iter().position(|i| *i == self.selected) else { return };
+        let from = self
+            .anchor
+            .and_then(|id| rows.iter().position(|i| self.downloads[*i].id == id))
+            .unwrap_or(to);
+        let (lo, hi) = (from.min(to), from.max(to));
+        for id in rows[lo..=hi].iter().map(|i| self.downloads[*i].id) {
+            if !self.marked.contains(&id) {
+                self.marked.push(id);
+            }
+        }
+        self.say_marked();
+    }
+
+    /// Every row on screen, or none if they all already are.
+    pub fn mark_all(&mut self) {
+        let ids: Vec<usize> = self.visible().iter().map(|i| self.downloads[*i].id).collect();
+        self.marked = match ids.iter().all(|id| self.marked.contains(id)) {
+            true => Vec::new(),
+            false => ids,
+        };
+        self.anchor = None;
+        self.say_marked();
+    }
+
+    fn say_marked(&mut self) {
+        self.message = match self.marked.len() {
+            0 => "selection cleared".into(),
+            1 => "1 selected".into(),
+            n => format!("{n} selected"),
+        };
+    }
+
+    /// What an operation acts on: the marked rows, or the cursor row when
+    /// nothing is marked. By id, since removals move every index after them.
+    pub fn targets(&self) -> Vec<usize> {
+        match self.marked.is_empty() {
+            true => self.downloads.get(self.selected).map(|d| d.id).into_iter().collect(),
+            // In list order rather than the order they were marked.
+            false => self
+                .downloads
+                .iter()
+                .filter(|d| self.marked.contains(&d.id))
+                .map(|d| d.id)
+                .collect(),
+        }
+    }
+
+    /// Run a per-row operation over everything selected, then drop the marks:
+    /// they described rows that have just changed or gone.
+    pub fn on_targets(&mut self, mut op: impl FnMut(&mut App, usize)) {
+        for id in self.targets() {
+            let Some(at) = self.downloads.iter().position(|d| d.id == id) else { continue };
+            op(self, at);
+        }
+        self.marked.clear();
+        self.anchor = None;
+        self.clamp_selection();
+    }
+
     /// Indices of the downloads shown: the current queue, current filter.
     pub fn visible(&self) -> Vec<usize> {
         let queue = self.queue().id;

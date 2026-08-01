@@ -233,12 +233,16 @@ fn truncate(s: &str, max: usize) -> String {
 fn draw_table(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let visible = app.visible();
-    let title = format!(
-        "{} — {} ({})",
-        app.queue().name,
-        app.filter.label(),
-        visible.len()
-    );
+    let title = match app.marked.len() {
+        0 => format!("{} — {} ({})", app.queue().name, app.filter.label(), visible.len()),
+        // What the next operation will act on is worth saying out loud.
+        n => format!(
+            "{} — {} ({}) · {n} selected",
+            app.queue().name,
+            app.filter.label(),
+            visible.len()
+        ),
+    };
 
     if visible.is_empty() {
         f.render_widget(
@@ -271,7 +275,9 @@ fn draw_table(f: &mut Frame, app: &App, area: Rect) {
         let icon = status_icon(&d.status, app.nerd);
         // Zebra striping so long lists stay scannable.
         let bg = if row % 2 == 0 { t.bg } else { t.panel };
+        let marked = app.marked.contains(&d.id);
         let mut cells = vec![
+            Cell::from(if marked { "▌" } else { " " }).style(Style::default().fg(t.accent)),
             Cell::from(icon).style(Style::default().fg(color)),
             Cell::from(name_of(d)),
         ];
@@ -291,8 +297,8 @@ fn draw_table(f: &mut Frame, app: &App, area: Rect) {
         Row::new(cells).style(Style::default().bg(bg).fg(t.fg))
     });
 
-    let mut widths = vec![Constraint::Length(1), Constraint::Min(12)];
-    let mut header = vec!["", "name"];
+    let mut widths = vec![Constraint::Length(1), Constraint::Length(1), Constraint::Min(12)];
+    let mut header = vec!["", "", "name"];
     widths.push(Constraint::Length(if wide { 14 } else { 8 }));
     widths.push(Constraint::Length(6));
     header.extend(["progress", ""]);
@@ -442,7 +448,7 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let keys: &[(&str, &str)] = if area.width >= 100 {
-        &[("a", "add"), ("v", "paste"), ("c", "crawl"), ("e", "edit"), ("d", "del"), ("p", "pause"), ("x", "stop"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
+        &[("a", "add"), ("v", "paste"), ("c", "crawl"), ("e", "edit"), ("d", "del"), ("p", "pause"), ("x", "stop"), ("space", "select"), ("M", "range"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
     } else if area.width >= 74 {
         &[("a", "add"), ("v", "paste"), ("c", "crawl"), ("d", "del"), ("i…", "item"), ("g…", "queue"), ("s", "settings"), ("Tab", "filter"), ("q", "quit")]
     } else {

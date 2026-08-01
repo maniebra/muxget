@@ -11,6 +11,20 @@ use crate::models::crawl::Found;
 use crate::utils::parse::human;
 use crate::views::theme::Theme;
 
+/// What a confirmation is about: the marked rows counted, or the one row the
+/// cursor is on named.
+fn targets(app: &App, at: usize) -> String {
+    match app.marked.len() {
+        0 => app.downloads.get(at).map_or(String::new(), |d| d.url.clone()),
+        1 => app
+            .downloads
+            .iter()
+            .find(|d| app.marked.contains(&d.id))
+            .map_or(String::new(), |d| d.url.clone()),
+        n => format!("{n} selected downloads"),
+    }
+}
+
 /// Centered popover, at most `w` x `h` but never wider than the terminal.
 fn centered(area: Rect, w: u16, h: u16) -> Rect {
     let w = w.min(area.width.saturating_sub(2));
@@ -48,10 +62,7 @@ pub fn draw(f: &mut Frame, app: &App) {
                     Style::default().fg(t.fg),
                 ),
                 Line::default(),
-                Line::styled(
-                    app.downloads.get(*at).map_or(String::new(), |d| d.url.clone()),
-                    Style::default().fg(t.err),
-                ),
+                Line::styled(targets(app, *at), Style::default().fg(t.err)),
             ],
             "y/Enter delete · n/Esc keep",
         ),
@@ -64,12 +75,13 @@ pub fn draw(f: &mut Frame, app: &App) {
                 ),
                 Line::default(),
                 Line::styled(
-                    app.downloads
-                        .get(*at)
-                        .map_or(String::new(), |d| match &d.path {
+                    match app.marked.is_empty() {
+                        false => targets(app, *at),
+                        true => app.downloads.get(*at).map_or(String::new(), |d| match &d.path {
                             Some(p) => p.display().to_string(),
                             None => format!("{} (no file written yet)", d.url),
                         }),
+                    },
                     Style::default().fg(t.err),
                 ),
             ],

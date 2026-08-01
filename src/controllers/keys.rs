@@ -216,12 +216,16 @@ impl App {
     fn on_dialog_key(&mut self, dialog: Dialog, key: KeyCode) {
         match dialog {
             Dialog::Delete(at) => match key {
-                KeyCode::Enter | KeyCode::Char('y') => self.delete(at),
+                KeyCode::Enter | KeyCode::Char('y') => {
+                    self.on_targets(|app, at| app.delete(at))
+                }
                 KeyCode::Esc | KeyCode::Char('n') => {}
                 _ => self.dialog = Some(Dialog::Delete(at)),
             },
             Dialog::DeleteData(at) => match key {
-                KeyCode::Enter | KeyCode::Char('y') => self.delete_with_data(at),
+                KeyCode::Enter | KeyCode::Char('y') => {
+                    self.on_targets(|app, at| app.delete_with_data(at))
+                }
                 KeyCode::Esc | KeyCode::Char('n') => {}
                 _ => self.dialog = Some(Dialog::DeleteData(at)),
             },
@@ -378,9 +382,12 @@ impl App {
                     self.dialog = Some(Dialog::Delete(self.selected));
                 }
             }
-            KeyCode::Char('p') | KeyCode::Char(' ') => self.toggle_pause(self.selected),
+            KeyCode::Char('m') | KeyCode::Char(' ') => self.mark(),
+            KeyCode::Char('M') => self.mark_range(),
+            KeyCode::Char('A') => self.mark_all(),
+            KeyCode::Char('p') => self.on_targets(|app, at| app.toggle_pause(at)),
             KeyCode::Char('P') => self.toggle_all_pause(),
-            KeyCode::Char('x') => self.cancel(self.selected),
+            KeyCode::Char('x') => self.on_targets(|app, at| app.cancel(at)),
             KeyCode::Char(']') | KeyCode::Right => self.cycle_queue(1),
             KeyCode::Char('[') | KeyCode::Left => self.cycle_queue(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
@@ -413,7 +420,7 @@ impl App {
                 }
             }
             ('i', 'F') => self.force_restart(self.selected),
-            ('i', 't') => self.retry(self.selected),
+            ('i', 't') => self.on_targets(|app, at| app.retry(at)),
             ('i', 'o') => self.open_item(self.selected),
             ('i', 'f') => self.reveal_item(self.selected),
             ('g', 'n') => self.dialog = Some(Dialog::QueueNew(String::new())),

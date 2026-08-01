@@ -242,12 +242,15 @@ applied once the backend reports a total and the download moves queue then.
 within one, `Esc` closes.
 
 - **general** — theme, download directory, nerd font icons, confirm before dl playlist.
-  With confirmation on, a playlist opens a picker: `/` filters by words in the title, `t` by upload date range, `space` picks, `Enter` queues.
+  With confirmation on, a playlist opens a picker: `/` filters by words in the title, `t`/`T` set the uploaded-from and uploaded-to dates, `space` picks, `Enter` queues.
 - **backends** — a form over the common aria2c, yt-dlp and wget options:
   `Enter` toggles a switch or edits a value, `b` switches backend, `x` unsets
   one.
 - **crawler** — the defaults the crawl dialog opens with: depth, extensions,
   size range, and the off-host / under-path / no-robots / flat switches.
+- **log** — every command muxget ran and everything the backends wrote to
+  standard error, stamped and tagged by download; `x` clears it. This is where
+  the reason a download failed actually is.
 - **categories** — the routing rules, fully editable: `n` new rule, `Enter`
   edit a field, `x` clear it or delete the rule. Saved to `rules` on close and
   applied without a restart.

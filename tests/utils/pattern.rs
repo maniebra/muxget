@@ -105,3 +105,34 @@ https://example.com/a.iso
     assert!(urls_in("").is_empty());
     assert!(urls_in("just a note\nand another").is_empty());
 }
+
+#[test]
+fn a_directory_is_made_and_proven_writable_before_a_download_starts() {
+    use muxget::utils::prepare_dir;
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = std::env::temp_dir().join("muxget-test-perms");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+
+    // A missing directory is created, several levels deep if need be.
+    let nested = root.join("yt/Fireship");
+    assert_eq!(prepare_dir(&nested), Ok(()));
+    assert!(nested.is_dir());
+    // And nothing of the probe is left behind.
+    assert_eq!(std::fs::read_dir(&nested).unwrap().count(), 0);
+
+    // A directory that cannot be created says so in plain words.
+    let readonly = root.join("locked");
+    std::fs::create_dir(&readonly).unwrap();
+    std::fs::set_permissions(&readonly, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let err = prepare_dir(&readonly.join("under")).unwrap_err();
+    assert!(err.contains("cannot create") && err.contains("permission denied"), "{err}");
+
+    // One that exists but is not writable fails here rather than mid-download.
+    let err = prepare_dir(&readonly).unwrap_err();
+    assert!(err.contains("cannot write into") && err.contains("permission denied"), "{err}");
+
+    std::fs::set_permissions(&readonly, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let _ = std::fs::remove_dir_all(&root);
+}

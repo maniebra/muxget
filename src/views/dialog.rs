@@ -144,7 +144,7 @@ pub fn draw(f: &mut Frame, app: &App) {
             playlist_lines(t, pick),
             match pick.editing.is_some() {
                 true => "Enter apply · Esc keep the old value",
-                false => "space pick · a all · / words · t dates · d directory · Enter download",
+                false => "space pick · a all · / words · t/T dates · d dir · Enter download",
             },
         ),
         Dialog::QueueClear(at, all) => (
@@ -202,7 +202,9 @@ pub fn draw(f: &mut Frame, app: &App) {
     f.render_widget(Clear, area);
     f.render_widget(
         Paragraph::new(body)
-            .wrap(Wrap { trim: true })
+            // `trim: false`: the pickers indent their rows, and a trimmed
+            // line loses the column the cursor marker sits in.
+            .wrap(Wrap { trim: false })
             .style(Style::default().bg(t.panel).fg(t.fg))
             .block(
                 Block::bordered()
@@ -414,22 +416,28 @@ fn playlist_lines<'a>(t: &Theme, pick: &Pick) -> Vec<Line<'a>> {
         _ => format!("{label}: {}", if value.is_empty() { empty } else { value }),
     };
     let head = format!(
-        "{} entries · {} shown · {} picked\n{}\n{}  ·  {}",
+        "{} entries · {} shown · {} picked\n{}\n{}\n{}  ·  {}",
         pick.listing.entries.len(),
         shown.len(),
         pick.picked.len(),
         field(Field::Dir, "directory", &pick.listing.over.dir, "(the download directory)"),
         field(Field::Words, "words", &pick.words, "(any title)"),
-        field(Field::Dates, "uploaded", &pick.listing.dates.typed(), "(any date)"),
+        field(Field::From, "uploaded from", &shown_date(&pick.listing.dates.after), "(first upload)"),
+        field(Field::To, "to", &shown_date(&pick.listing.dates.before), "(now)"),
     );
     // The title if yt-dlp knew one, the url otherwise.
     let rows: Vec<String> = shown
         .iter()
         .map(|i| {
-            let (url, title) = &pick.listing.entries[*i];
-            match title.is_empty() {
-                true => url.clone(),
-                false => title.clone(),
+            let entry = &pick.listing.entries[*i];
+            let name = match entry.title.is_empty() {
+                true => entry.url.clone(),
+                false => entry.title.clone(),
+            };
+            // `20220802` reads as a date once it has its dashes back.
+            match entry.date.len() == 8 {
+                true => format!("{}-{}-{}  {name}", &entry.date[..4], &entry.date[4..6], &entry.date[6..]),
+                false => format!("{:12}{name}", ""),
             }
         })
         .collect();
@@ -441,6 +449,14 @@ fn playlist_lines<'a>(t: &Theme, pick: &Pick) -> Vec<Line<'a>> {
         .map(|(row, _)| row)
         .collect();
     pick_lines(t, head, &rows, &picked, pick.at)
+}
+
+/// `20200101` as it was typed, so a field reads back the way it was written.
+fn shown_date(date: &str) -> String {
+    match date.len() == 8 && date.chars().all(|c| c.is_ascii_digit()) {
+        true => format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..]),
+        false => date.to_string(),
+    }
 }
 
 /// A pick-from-a-list body: a header, then one `[x] row` per entry with the

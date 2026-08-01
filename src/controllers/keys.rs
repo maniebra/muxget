@@ -111,27 +111,42 @@ pub struct Pick {
 pub enum Field {
     Dir,
     Words,
-    Dates,
+    /// The two ends of the upload-date range, each typed on its own.
+    From,
+    To,
 }
 
 impl Pick {
-    /// Entries matching the word filter, as indexes. Every entry when no
-    /// words are typed, so this is the list to walk in every case.
+    /// Entries matching the filters, as indexes. Everything when nothing is
+    /// typed, so this is the list to walk in every case.
     pub fn shown(&self) -> Vec<usize> {
         let words: Vec<&str> = self.words.split_whitespace().collect();
+        let dates = &self.listing.dates;
         (0..self.listing.entries.len())
             .filter(|i| {
-                let (url, title) = &self.listing.entries[*i];
-                let text = match title.is_empty() {
-                    true => url.to_lowercase(),
-                    false => title.to_lowercase(),
+                let entry = &self.listing.entries[*i];
+                let text = match entry.title.is_empty() {
+                    true => entry.url.to_lowercase(),
+                    false => entry.title.to_lowercase(),
                 };
-                words.iter().all(|word| match word.strip_prefix('-') {
+                let by_words = words.iter().all(|word| match word.strip_prefix('-') {
                     Some(word) => !wild(word, &text),
                     None => wild(word, &text),
-                })
+                });
+                // `YYYYMMDD` sorts as text, so a range is two comparisons. An
+                // entry the listing gave no date for is kept rather than
+                // hidden by a filter it cannot answer.
+                let by_date = entry.date.is_empty()
+                    || ((dates.after.is_empty() || entry.date >= dates.after)
+                        && (dates.before.is_empty() || entry.date <= dates.before));
+                by_words && by_date
             })
             .collect()
+    }
+
+    /// Entries the listing gave no date for, which no date filter can judge.
+    pub fn undated(&self) -> usize {
+        self.listing.entries.iter().filter(|e| e.date.is_empty()).count()
     }
 }
 
@@ -346,7 +361,10 @@ impl App {
                     }
                     KeyCode::Char('/') => pick.editing = Some((Field::Words, pick.words.clone())),
                     KeyCode::Char('t') => {
-                        pick.editing = Some((Field::Dates, pick.listing.dates.typed()))
+                        pick.editing = Some((Field::From, pick.listing.dates.after.clone()))
+                    }
+                    KeyCode::Char('T') => {
+                        pick.editing = Some((Field::To, pick.listing.dates.before.clone()))
                     }
                     // The list walked is the filtered one, so the cursor and
                     // `a` only ever touch rows that are on screen.

@@ -363,9 +363,9 @@ fn a_listed_playlist_queues_only_the_picked_entries() {
         url: "https://y.com/playlist?list=x".into(),
         queue: DEFAULT,
         entries: vec![
-            ("https://y.com/watch?v=a".into(), "First".into()),
-            ("https://y.com/watch?v=b".into(), "Second".into()),
-            ("https://y.com/watch?v=c".into(), String::new()),
+            entry("a", "20200101", "First"),
+            entry("b", "20210101", "Second"),
+            entry("c", "", ""),
         ],
         ..Default::default()
     });
@@ -374,7 +374,9 @@ fn a_listed_playlist_queues_only_the_picked_entries() {
     // Everything starts picked; space on the second row drops it.
     app.on_key(KeyCode::Down);
     app.on_key(KeyCode::Char(' '));
-    // A directory typed here applies to every entry queued from this list.
+    // Each end of the date range is its own field; leaving one alone leaves
+    // that end open. Typing one re-lists, so only the directory is exercised
+    // here — see the ytdlp tests for what a date does to the listing.
     app.on_key(KeyCode::Char('d'));
     for c in "/tmp".chars() {
         app.on_key(KeyCode::Char(c));
@@ -400,9 +402,9 @@ fn the_word_filter_hides_rows_and_decides_what_is_queued() {
         url: "https://y.com/playlist?list=x".into(),
         queue: DEFAULT,
         entries: vec![
-            ("https://y.com/watch?v=a".into(), "Lecture 1: Sorting".into()),
-            ("https://y.com/watch?v=b".into(), "Recitation 1".into()),
-            ("https://y.com/watch?v=c".into(), "Lecture 2: Hashing".into()),
+            entry("a", "20200101", "Lecture 1: Sorting"),
+            entry("b", "20210101", "Recitation 1"),
+            entry("c", "20220101", "Lecture 2: Hashing"),
         ],
         ..Default::default()
     });
@@ -485,4 +487,116 @@ fn a_rule_pattern_routes_each_channel_to_its_own_directory() {
     assert_eq!(over.dir, "/srv/yt/mitocw", "decided from the playlist url, not its entries");
     app.enqueue("https://youtube.com/watch?v=abc", queue, over);
     assert_eq!(app.downloads[2].over.dir, "/srv/yt/mitocw");
+}
+
+#[test]
+fn a_download_into_an_unwritable_directory_fails_with_a_readable_reason() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let locked = std::env::temp_dir().join("muxget-test-locked");
+    let _ = std::fs::remove_dir_all(&locked);
+    std::fs::create_dir_all(&locked).unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+    let mut app = app_with(&[]);
+    let over = muxget::models::download::Overrides {
+        dir: locked.join("yt").display().to_string(),
+        ..Default::default()
+    };
+    app.enqueue("https://example.com/x.iso", DEFAULT, over);
+
+    // No backend was ever spawned: the row failed before it could be.
+    assert!(app.downloads[0].pid.is_none());
+    match &app.downloads[0].status {
+        Status::Failed(reason) => {
+            assert!(reason.contains("cannot create"), "{reason}");
+            assert!(reason.contains("permission denied"), "{reason}");
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let _ = std::fs::remove_dir_all(&locked);
+}
+
+#[test]
+fn a_rule_never_makes_a_directory_called_dollar_one() {
+    use muxget::models::rule::Rule;
+
+    let mut app = app_with(&[]);
+    app.queues[0].paused = true;
+    // A rule half-typed: the directory wants a capture, the pattern is not
+    // there to make one.
+    let mut half = Rule::default();
+    half.set(1, "example.com");
+    half.set(5, "/srv/$1");
+    app.rules = vec![half];
+
+    app.add("https://example.com/x.iso");
+    assert_eq!(app.downloads[0].over.dir, "", "the download directory, not `$1`");
+
+    // With the pattern in place it fills as it should.
+    let mut whole = Rule::default();
+    whole.set(2, "example.com/*/");
+    whole.set(5, "/srv/$1");
+    app.rules = vec![whole];
+    app.add("https://example.com/rust/y.iso");
+    assert_eq!(app.downloads[1].over.dir, "/srv/rust");
+}
+
+/// A listed playlist entry, as the fast listing hands one over.
+fn entry(id: &str, date: &str, title: &str) -> muxget::models::ytdlp::Entry {
+    muxget::models::ytdlp::Entry {
+        url: format!("https://y.com/watch?v={id}"),
+        date: date.into(),
+        title: title.into(),
+    }
+}
+
+#[test]
+fn a_date_filter_uses_the_dates_the_listing_already_carried() {
+    use crossterm::event::KeyCode;
+    use muxget::controllers::keys::Dialog;
+    use muxget::models::ytdlp::Listing;
+
+    let mut app = app_with(&[]);
+    app.queues[0].paused = true;
+    app.listed(Listing {
+        url: "https://y.com/playlist?list=x".into(),
+        queue: DEFAULT,
+        entries: vec![
+            entry("a", "20190101", "Old"),
+            entry("b", "20210601", "Middle"),
+            entry("c", "20230101", "New"),
+            entry("d", "", "Undated"),
+        ],
+        ..Default::default()
+    });
+
+    // `t` sets the start date. It filters on screen — no re-listing, so the
+    // picker is still up and the entries are the same ones.
+    app.on_key(KeyCode::Char('t'));
+    for c in "2020-01-01".chars() {
+        app.on_key(KeyCode::Char(c));
+    }
+    app.on_key(KeyCode::Enter);
+    let Some(Dialog::Playlist(pick)) = &app.dialog else { panic!("no re-listing") };
+    assert_eq!(pick.listing.entries.len(), 4, "the same listing, filtered");
+    assert_eq!(pick.shown(), [1, 2, 3], "the old one is out, the undated one stays");
+    assert_eq!(pick.listing.dates.after, "20200101");
+
+    // `T` closes the other end.
+    app.on_key(KeyCode::Char('T'));
+    for c in "2022-01-01".chars() {
+        app.on_key(KeyCode::Char(c));
+    }
+    app.on_key(KeyCode::Enter);
+    let Some(Dialog::Playlist(pick)) = &app.dialog else { panic!() };
+    assert_eq!(pick.shown(), [1, 3], "one in range, and the undated one");
+    assert_eq!(pick.undated(), 1);
+
+    // Queueing takes what the filter left.
+    app.on_key(KeyCode::Enter);
+    let urls: Vec<&str> = app.downloads.iter().map(|d| d.url.as_str()).collect();
+    assert_eq!(urls, ["https://y.com/watch?v=b", "https://y.com/watch?v=d"]);
 }

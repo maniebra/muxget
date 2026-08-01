@@ -208,17 +208,37 @@ Two filters narrow a long channel down:
 | key | field | example |
 |---|---|---|
 | `/` | words the title must contain | `lecture -recitation`, `problem*set` |
-| `t` | upload date range, `from..to` | `2020-01-01..2023-12-31`, `now-6months..` |
+| `t` | uploaded from | `2020-01-01`, `now-6months` |
+| `T` | uploaded to | `2023-12-31`, `today` |
 
 Words are matched against the title — the url when there is no title — case
 insensitively; one containing `*` is a glob, one starting with `-` must *not*
 appear. Hidden rows are never queued, and applying a filter picks everything it
 leaves on screen, so `/` then `Enter` is the whole job.
 
-Either end of the date range may be left off, and yt-dlp's own shorthand
-(`today`, `now-1week`, `20200101`) works as well as `2020-01-01`. A date range
-costs time: upload dates are not in a playlist's index, so yt-dlp reopens every
-entry to read one and the listing is re-run rather than filtered on screen. Anything else — a rate cap, a user name — comes from the
+The two ends are separate fields and start where you would want them: **from**
+the first upload, **to** now. Filling one leaves the other alone, so a single
+date is a perfectly good filter — and clearing a field puts that end back to
+its default. `2020-01-01` and `2023/12/31` are both understood.
+
+Each row shows its upload date, and filtering by one happens on screen: the
+dates arrive with the listing, so a range costs nothing and the list narrows as
+you type. YouTube's index carries "3 years ago" rather than a date, and muxget
+asks yt-dlp to turn that into one (`--extractor-args
+youtubetab:approximate_date`). **These dates are approximate** — rounded the
+way the site displays them, so one can be months out. They are right for
+"everything since 2020" and wrong for "everything in the first week of March".
+
+Two things still need the slow way, and muxget falls back to it by itself,
+saying so in the status line while it runs:
+
+- a relative date — `today`, `now-6months` — which only yt-dlp can resolve;
+- a site whose listing carries no dates at all.
+
+Then every entry is opened for its exact date, which costs a request each.
+An entry the listing gave no date for is never hidden by a date filter: it
+stays in the list, without a date beside it, rather than disappearing into a
+comparison it cannot answer. Anything else — a rate cap, a user name — comes from the
 add form, as it does without the picker, and per-row edits are still available
 after queueing.
 
@@ -564,6 +584,11 @@ up as a directory name. A `*` stops at `/`, `?` or `#`, so a trailing one takes
 a single path segment rather than the rest of the address. That is what makes
 `youtube.com/@*` give `Fireship` rather than `Fireship/videos`.
 
+A `$1` the pattern cannot fill is not used: the rule keeps matching, but that
+directory or queue is skipped and the log says why. Otherwise a rule caught
+half-written — the directory typed before the pattern — would quietly create a
+directory called `$1`.
+
 These are globs with captures, not regular expressions: `*` is the only
 metacharacter. Nothing else about a rule changes — a pattern can stand alone or
 sit alongside `extensions` and `domains`, and every condition set still has to
@@ -611,7 +636,28 @@ by hand are read at startup as before.
 - **general** — theme, download directory, nerd font icons, confirm before dl playlist.
 - **backends** — a form over the common aria2c, yt-dlp and wget options.
 - **crawler** — the defaults the crawl dialog opens with: depth, extensions, size range, and the four switches.
-- **categories** — the routing rules as they will be applied.
+- **categories** — the routing rules, editable in place.
+- **log** — every command muxget ran and everything the backends said.
+
+### The log
+
+The log tab is what a download leaves behind when it goes wrong. Each line is
+stamped with the local time and tagged with the download's id:
+
+```
+23:08:33   [4] yt-dlp --newline --no-color --continue -P /srv/yt https://…
+23:08:41 ! [4] ERROR: [youtube] a: Video unavailable
+23:08:41 ✗ [4] failed: exit 1
+```
+
+The command as it was actually run, then whatever the backend wrote to standard
+error, then how it ended. That middle part is the reason for a failure — the
+exit code in the status column only says that there was one — and until now it
+was being thrown away.
+
+`j`/`k` scroll, `g`/`G` jump to the oldest or newest line, `x` empties it. The
+last 500 lines are kept, in memory only: nothing is written to disk, and the
+log starts empty each run.
 
 Backend options are stored as plain flags, one file per backend:
 
@@ -760,6 +806,14 @@ exists", not "exit 13"; wget's 8 means the server refused some of the crawl,
 which is reported but does not fail the mirror.
 
 ## Troubleshooting
+
+**A download fails immediately with `cannot create …` or `cannot write into
+…`.** The directory it was routed to is not writable by you. muxget creates the
+directory a download needs before starting it and writes a probe file to check,
+so this is caught before the backend runs rather than as a bare exit code
+afterwards. Check the rule that sent it there — a `directory` under `/srv` or
+another root-owned path is the usual cause — or the download directory in
+settings.
 
 **A download fails immediately.** The backend is probably not installed — the
 status shows the spawn error. Check `aria2c`, `yt-dlp` or `wget` is on your

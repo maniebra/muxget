@@ -95,8 +95,18 @@ fn a_capture_fills_the_destination_in() {
     let url = "https://youtube.com/@Fireship/videos";
     assert!(rule.matches(url), "a rule may be nothing but a pattern");
     let caught = rule.captures(url).unwrap();
-    assert_eq!(rule.fill(&rule.get(5), &caught), "/home/mani/yt/Fireship");
-    assert_eq!(rule.fill(&rule.get(4), &caught), "Fireship", "queues take one too");
+    assert_eq!(rule.fill(&rule.get(5), &caught).unwrap(), "/home/mani/yt/Fireship");
+    assert_eq!(rule.fill(&rule.get(4), &caught).unwrap(), "Fireship", "queues take one too");
+
+    // A `$1` the pattern cannot fill is refused rather than taken literally —
+    // it would otherwise become a directory named `$1`.
+    let mut half = Rule::default();
+    half.set(1, "youtube.com");
+    half.set(5, "/home/mani/yt/$1");
+    assert!(half.matches(url), "the rule still applies");
+    assert_eq!(half.fill("/home/mani/yt/$1", &half.captures(url).unwrap()), None);
+    // And so is a $2 when the pattern has only one star.
+    assert_eq!(rule.fill("/home/mani/yt/$1/$2", &caught), None);
 
     assert!(!rule.matches("https://youtube.com/watch?v=abc"), "no channel, no match");
     // And the rule survives the file.

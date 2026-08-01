@@ -2,6 +2,7 @@ pub mod aria2;
 pub mod crawl;
 pub mod backend;
 pub mod download;
+pub mod log;
 pub mod option;
 pub mod queue;
 pub mod rule;

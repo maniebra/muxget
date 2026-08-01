@@ -194,9 +194,11 @@ mod settings {
         p.on_key(KeyCode::Tab);
         assert_eq!(TABS[p.tab], "categories");
         p.on_key(KeyCode::Tab);
+        assert_eq!(TABS[p.tab], "log");
+        p.on_key(KeyCode::Tab);
         assert_eq!(TABS[p.tab], "general", "wraps around");
         p.on_key(KeyCode::BackTab);
-        assert_eq!(TABS[p.tab], "categories", "and backwards");
+        assert_eq!(TABS[p.tab], "log", "and backwards");
     }
 
     #[test]
@@ -323,5 +325,50 @@ mod categories {
         let mut empty = Rule::default();
         empty.set(0, "iso");
         assert!(rule::parse(&rule::render(&[empty])).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod logging {
+    use crossterm::event::KeyCode;
+    use muxget::controllers::options::Settings;
+    use muxget::models::log::{self, Level};
+
+    /// One test, because the log is a global: two of them would race.
+    #[test]
+    fn the_log_records_what_happened_and_the_tab_reads_it() {
+        std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir().join("muxget-tests-log"));
+        log::clear();
+        log::info("[0] queued https://a.com/x.iso (aria2c)");
+        log::warn("[0] ERROR: unable to download video data");
+        log::error("[0] failed: exit 1");
+
+        let entries = log::entries();
+        assert_eq!(entries.len(), 3, "oldest first");
+        assert_eq!(entries[2].level, Level::Error);
+        assert!(entries[0].at.len() == 8 && entries[0].at.contains(':'), "stamped HH:MM:SS");
+
+        // Tab 4 is the log; it scrolls and `G` jumps to the newest line.
+        let mut p = Settings::open(4, "aria2c", Vec::new());
+        assert_eq!(p.rows(), 3);
+        p.on_key(KeyCode::Char('G'));
+        assert_eq!(p.cursor, 2);
+        p.on_key(KeyCode::Char('g'));
+        assert_eq!(p.cursor, 0);
+
+        // `x` empties it rather than unsetting anything.
+        p.on_key(KeyCode::Char('x'));
+        assert!(log::entries().is_empty());
+        assert_eq!(p.rows(), 0);
+
+        // A chatty crawl cannot grow it without bound.
+        for i in 0..600 {
+            log::info(format!("line {i}"));
+        }
+        let entries = log::entries();
+        assert_eq!(entries.len(), 500);
+        assert_eq!(entries[0].text, "line 100", "the oldest go first");
+        assert_eq!(entries[499].text, "line 599");
+        log::clear();
     }
 }

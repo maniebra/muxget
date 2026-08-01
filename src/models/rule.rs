@@ -117,13 +117,16 @@ impl Rule {
         }
     }
 
-    /// A rule's text with `$1`, `$2` … filled in from `captures`.
-    pub fn fill(&self, text: &str, captures: &[String]) -> String {
+    /// A rule's text with `$1`, `$2` … filled in from `captures`. `None` when
+    /// a placeholder is left over — the rule asks for a capture the pattern
+    /// does not make, and a literal `$1` must never reach a path or a queue
+    /// name.
+    pub fn fill(&self, text: &str, captures: &[String]) -> Option<String> {
         let mut out = text.to_string();
         for (i, capture) in captures.iter().enumerate() {
             out = out.replace(&format!("${}", i + 1), capture);
         }
-        out
+        (!has_placeholder(&out)).then_some(out)
     }
 
     pub fn wants_size(&self, total: f64) -> bool {
@@ -164,6 +167,13 @@ pub fn parse(text: &str) -> Vec<Rule> {
     // A rule that decides nothing would silently swallow its matches.
     rules.retain(|r| r.queue.is_some() || r.directory.is_some() || r.backend.is_some());
     rules
+}
+
+/// Is there a `$1`-style placeholder left in this text?
+pub fn has_placeholder(text: &str) -> bool {
+    text.as_bytes()
+        .windows(2)
+        .any(|pair| pair[0] == b'$' && pair[1].is_ascii_digit())
 }
 
 /// Match a `*` pattern against a url and hand back what the stars covered.

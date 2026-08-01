@@ -127,6 +127,39 @@ pub fn on_path(program: &str) -> bool {
     })
 }
 
+/// Make sure a download can actually be written into `dir`: create it if it
+/// is missing, then prove a file can be made in it. Returns a message fit for
+/// the status line, since "permission denied" three levels down in a
+/// backend's own error is not one.
+///
+/// The probe is the point: a directory that already exists but is not
+/// writable creates fine and fails later, once the download has started and
+/// looks like it is working.
+pub fn prepare_dir(dir: &Path) -> Result<(), String> {
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        return Err(format!("cannot create {}: {}", dir.display(), reason(&e)));
+    }
+    let probe = dir.join(".muxget-write-test");
+    match std::fs::write(&probe, b"") {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&probe);
+            Ok(())
+        }
+        Err(e) => Err(format!("cannot write into {}: {}", dir.display(), reason(&e))),
+    }
+}
+
+/// An io error in the words a person uses.
+fn reason(e: &std::io::Error) -> String {
+    match e.kind() {
+        std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+        std::io::ErrorKind::NotFound => "no such directory".into(),
+        std::io::ErrorKind::StorageFull => "the disk is full".into(),
+        // `Read-only file system` and friends read well enough as they are.
+        _ => e.to_string(),
+    }
+}
+
 /// The system clipboard, through whichever tool this desktop has. No X11 or
 /// Wayland library for one read: the tools are what a user already has, and
 /// the first one on `PATH` wins.

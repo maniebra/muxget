@@ -6,6 +6,7 @@ use ratatui::Frame;
 
 use crate::controllers::app::App;
 use crate::controllers::options::{Options, Settings, GENERAL, RULE_ROWS, TABS};
+use crate::models::log;
 use crate::models::rule::FIELDS as RULE_FIELDS;
 use crate::models::option::Kind;
 use crate::utils::{args, config_dir};
@@ -28,13 +29,16 @@ pub fn draw(f: &mut Frame, app: &App) {
         0 => draw_general(f, app, panel, body),
         1 => draw_form(f, app, panel, &panel.options, body),
         2 => draw_form(f, app, panel, &panel.crawl, body),
-        _ => draw_categories(f, app, panel, body),
+        3 => draw_categories(f, app, panel, body),
+        _ => draw_log(f, app, panel, body),
     }
 
     let path = match panel.tab {
         1 => args::path(panel.options.backend),
         2 => args::path("crawl"),
-        _ => config_dir().join("rules"),
+        3 => config_dir().join("rules"),
+        // The log is in memory only; nothing to point at on disk.
+        _ => std::path::PathBuf::from("in memory · x clears · G newest"),
     };
     f.render_widget(
         Paragraph::new(hints(panel, t))
@@ -214,6 +218,55 @@ fn draw_categories(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
     );
 }
 
+/// The log, oldest first, scrolled to wherever the cursor is. Read only —
+/// what happened, happened.
+fn draw_log(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
+    let t = &app.theme;
+    let entries = log::entries();
+    if entries.is_empty() {
+        f.render_widget(
+            Paragraph::new("\n  nothing logged yet")
+                .style(Style::default().bg(t.panel).fg(t.muted))
+                .block(
+                    Block::bordered()
+                        .border_style(Style::default().fg(t.muted).bg(t.panel))
+                        .style(Style::default().bg(t.panel))
+                        .padding(Padding::horizontal(1)),
+                ),
+            area,
+        );
+        return;
+    }
+    let rows = entries.iter().skip(panel.cursor).map(|e| {
+        let color = match e.level {
+            log::Level::Info => t.muted,
+            log::Level::Warn => t.accent,
+            log::Level::Error => t.err,
+        };
+        Row::new(vec![
+            Cell::from(e.at.clone()).style(Style::default().fg(t.muted)),
+            Cell::from(match e.level {
+                log::Level::Info => " ",
+                log::Level::Warn => "!",
+                log::Level::Error => "✗",
+            })
+            .style(Style::default().fg(color)),
+            Cell::from(e.text.clone()).style(Style::default().fg(color)),
+        ])
+        .style(Style::default().bg(t.panel).fg(t.fg))
+    });
+    // The cursor is the scroll here: the table shows from it down, so the
+    // highlighted row is always the top one.
+    render_table(
+        f,
+        app,
+        0,
+        rows,
+        [Constraint::Length(8), Constraint::Length(1), Constraint::Min(20)],
+        area,
+    );
+}
+
 /// What each rule field is for, shown while it is empty.
 const RULE_HINTS: [&str; 7] = [
     "e.g. mp4,mkv",
@@ -276,6 +329,13 @@ fn hints<'a>(panel: &Settings, t: &crate::views::theme::Theme) -> Line<'a> {
             ("Enter", "toggle / edit"),
             ("x", "unset"),
             ("Esc", "save & close"),
+        ],
+        (4, _) => &[
+            ("Tab", "next tab"),
+            ("j/k", "scroll"),
+            ("g/G", "oldest / newest"),
+            ("x", "clear the log"),
+            ("Esc", "close"),
         ],
         (3, _) => &[
             ("Tab", "next tab"),

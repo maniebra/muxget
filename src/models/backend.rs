@@ -3,6 +3,7 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc::Sender;
 
 use crate::models::download::{Overrides, Progress, Status, Update};
+use crate::models::log;
 use crate::utils::parse::{destination, for_each_line};
 use crate::utils::{clear_creds, write_creds};
 
@@ -44,6 +45,14 @@ pub trait Backend: Send + Sync {
     fn credentials(&self, user: &str, pass: &str) -> String;
 }
 
+/// A command as it would be typed, for the log. Arguments are as given: a
+/// password never reaches one — it goes through a config file — so there is
+/// nothing here to redact.
+fn printable(cmd: &Command) -> String {
+    let args: Vec<String> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+    format!("{} {}", cmd.get_program().to_string_lossy(), args.join(" "))
+}
+
 /// Spawn the backend and stream its progress to `tx` until it exits.
 pub fn run(
     backend: Box<dyn Backend>,
@@ -65,13 +74,23 @@ pub fn run(
             }
         }
     }
+    log::info(format!("[{id}] {}", printable(&cmd)));
     let mut child = cmd
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .stdin(Stdio::null())
-        .spawn()?;
+        .spawn()
+        .inspect_err(|e| log::error(format!("[{id}] {} would not start: {e}", backend.name())))?;
     let stdout = child.stdout.take().expect("stdout piped above");
+    let stderr = child.stderr.take().expect("stderr piped above");
     let pid = child.id();
+
+    // Whatever the tool complains about, kept for the log tab. This is where
+    // the reason for a failure actually lives — the exit code only says that
+    // there was one.
+    std::thread::spawn(move || {
+        for_each_line(stderr, |line| log::warn(format!("[{id}] {line}")));
+    });
 
     std::thread::spawn(move || {
         for_each_line(stdout, |line| {
@@ -93,6 +112,10 @@ pub fn run(
             Err(e) => Status::Failed(e.to_string()),
         };
         clear_creds(id);
+        match &status {
+            Status::Failed(reason) => log::error(format!("[{id}] failed: {reason}")),
+            _ => log::info(format!("[{id}] finished")),
+        }
         let _ = tx.send(Update::Finished(id, status));
     });
 

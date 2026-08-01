@@ -39,8 +39,15 @@ impl App {
     /// Where new downloads are written. Running transfers keep their old dir.
     pub fn set_dir(&mut self, dir: &str) {
         let path = PathBuf::from(expand_home(dir.trim()));
+        // A directory that is not there is a typo, not an instruction to
+        // create one four levels deep.
         if !path.is_dir() {
             self.message = format!("not a directory: {}", path.display());
+            return;
+        }
+        // It exists, but that is not the same as being able to write in it.
+        if let Err(e) = crate::utils::prepare_dir(&path) {
+            self.message = e;
             return;
         }
         self.dir = path;

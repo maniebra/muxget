@@ -1,6 +1,7 @@
 use crossterm::event::KeyCode;
 
 use crate::models::option::{specs, Kind, OptSpec, Preset};
+use crate::models::log;
 use crate::models::rule::{self, Rule};
 use crate::utils::args;
 
@@ -187,7 +188,7 @@ pub struct Settings {
 /// Rows on the categories tab: one header per rule, then its fields.
 pub const RULE_ROWS: usize = 1 + rule::FIELDS.len();
 
-pub const TABS: [&str; 4] = ["general", "backends", "crawler", "categories"];
+pub const TABS: [&str; 5] = ["general", "backends", "crawler", "categories", "log"];
 pub const GENERAL: [&str; 4] =
     ["theme", "download directory", "nerd font icons", "confirm before dl playlist"];
 
@@ -237,7 +238,8 @@ impl Settings {
             0 => GENERAL.len(),
             1 => self.options.specs().len(),
             2 => self.crawl.specs().len(),
-            _ => self.rules.len() * RULE_ROWS,
+            3 => self.rules.len() * RULE_ROWS,
+            _ => log::entries().len(),
         }
     }
 
@@ -341,6 +343,21 @@ impl Settings {
                     }
                     None => {}
                 }
+                Action::None
+            }
+            // The log is read, not edited; `x` empties it, `G` jumps to the
+            // newest line, which is the one worth looking at first.
+            (4, _, KeyCode::Char('x')) => {
+                log::clear();
+                self.cursor = 0;
+                Action::None
+            }
+            (4, _, KeyCode::Char('G') | KeyCode::End) => {
+                self.cursor = self.rows().saturating_sub(1);
+                Action::None
+            }
+            (4, _, KeyCode::Char('g') | KeyCode::Home) => {
+                self.cursor = 0;
                 Action::None
             }
             (1 | 2, _, key) => {

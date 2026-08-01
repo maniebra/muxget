@@ -23,30 +23,39 @@ pub fn expands_playlist(url: &str) -> bool {
     is_playlist(url) && !args::load("yt-dlp").iter().any(|a| a == "--no-playlist")
 }
 
-/// Lists the entries, one `<url>\t<title>` per line, without touching the
-/// media itself.
+/// Lists the entries — one `<url>\t<date>\t<title>` per line — without
+/// touching the media itself. One request for the whole playlist.
 ///
-/// A date range costs the flat listing: upload dates are not in a playlist's
-/// index, so yt-dlp has to open every entry to know one. Without a range this
-/// is a single request for the whole playlist.
-pub fn list_command(url: &str, dates: &DateRange) -> Command {
+/// `approximate_date` is what makes a date filter fast: YouTube's index
+/// carries "3 years ago" rather than a date, and this turns that into one.
+/// The result is coarse — it can be months out — but it arrives with the
+/// listing instead of costing a request per entry.
+pub fn list_command(url: &str) -> Command {
     let mut c = Command::new("yt-dlp");
-    c.arg("--ignore-errors");
-    match dates.is_empty() {
-        true => {
-            c.arg("--flat-playlist").arg("--print").arg("%(url)s\t%(title)s");
-        }
-        false => {
-            // `url` is the media stream once an entry is opened for real; the
-            // page is what belongs in the download list.
-            c.arg("--print").arg("%(webpage_url)s\t%(title)s");
-            if !dates.after.is_empty() {
-                c.arg("--dateafter").arg(&dates.after);
-            }
-            if !dates.before.is_empty() {
-                c.arg("--datebefore").arg(&dates.before);
-            }
-        }
+    c.arg("--flat-playlist")
+        .arg("--ignore-errors")
+        .arg("--extractor-args")
+        .arg("youtubetab:approximate_date")
+        .arg("--print")
+        .arg("%(url)s\t%(upload_date)s\t%(title)s")
+        .arg(url);
+    c
+}
+
+/// The slow, exact listing: every entry opened for its real upload date, and
+/// yt-dlp itself doing the filtering. Only for what the fast pass cannot
+/// answer — a site whose index carries no dates, or a relative date like
+/// `now-6months` that has to be resolved against a real one.
+pub fn dated_list_command(url: &str, dates: &DateRange) -> Command {
+    let mut c = Command::new("yt-dlp");
+    // `url` is the media stream once an entry is opened for real; the page is
+    // what belongs in the download list.
+    c.arg("--ignore-errors").arg("--print").arg("%(webpage_url)s\t%(upload_date)s\t%(title)s");
+    if !dates.after.is_empty() {
+        c.arg("--dateafter").arg(&dates.after);
+    }
+    if !dates.before.is_empty() {
+        c.arg("--datebefore").arg(&dates.before);
     }
     c.arg(url);
     c
@@ -60,8 +69,7 @@ pub struct Listing {
     pub queue: usize,
     pub over: Overrides,
     pub dates: DateRange,
-    /// `(url, title)` per entry, in playlist order.
-    pub entries: Vec<(String, String)>,
+    pub entries: Vec<Entry>,
 }
 
 /// An upload-date window, as yt-dlp spells one. Either end may be empty,
@@ -73,30 +81,16 @@ pub struct DateRange {
 }
 
 impl DateRange {
-    /// `<from>..<to>`, either side optional. Dates are passed to yt-dlp as
-    /// typed once the separators are gone, so its own shorthand — `today`,
-    /// `now-6months`, `20200101` — works as well as `2020-01-01`.
-    pub fn parse(text: &str) -> DateRange {
-        let (after, before) = text.trim().split_once("..").unwrap_or((text.trim(), ""));
-        DateRange { after: clean_date(after), before: clean_date(before) }
-    }
-
     pub fn is_empty(&self) -> bool {
         self.after.is_empty() && self.before.is_empty()
     }
-
-    /// The range as it goes back into the field it was typed in.
-    pub fn typed(&self) -> String {
-        match self.is_empty() {
-            true => String::new(),
-            false => format!("{}..{}", self.after, self.before),
-        }
-    }
 }
 
-/// `2020-01-01` is what people type; `20200101` is what yt-dlp reads. Its own
-/// relative forms contain `-` too, so only a plain date is stripped.
-fn clean_date(text: &str) -> String {
+/// A date as yt-dlp reads it. `2020-01-01` is what people type, `20200101` is
+/// what it wants, and its own shorthand — `today`, `now-6months` — contains
+/// `-` too, so only a plain date is stripped. Empty stays empty, which leaves
+/// that end of the range open.
+pub fn date(text: &str) -> String {
     let text = text.trim();
     match text.chars().all(|c| c.is_ascii_digit() || c == '-' || c == '/') {
         true => text.replace(['-', '/'], ""),
@@ -104,14 +98,40 @@ fn clean_date(text: &str) -> String {
     }
 }
 
-/// One listed line as (url, title); the title is whatever yt-dlp knew, and
-/// may be missing on an old version or a private entry.
-pub fn entry(line: &str) -> Option<(String, String)> {
+/// One entry of a playlist as the listing describes it.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Entry {
+    pub url: String,
+    /// `YYYYMMDD`, or empty when the listing had none to give.
+    pub date: String,
+    pub title: String,
+}
+
+/// One listed line. The date and title are whatever yt-dlp knew: a site with
+/// no dates in its index, or a private entry, gives neither.
+pub fn entry(line: &str) -> Option<Entry> {
     if !line.starts_with("http") {
         return None;
     }
-    let (url, title) = line.split_once('\t').unwrap_or((line, ""));
-    Some((url.trim().to_string(), title.trim().to_string()))
+    let mut parts = line.split('\t');
+    let url = parts.next()?.trim().to_string();
+    let date = parts.next().unwrap_or("").trim();
+    let title = parts.next().unwrap_or("").trim().to_string();
+    Some(Entry {
+        url,
+        // yt-dlp prints NA for a field it has no value for.
+        date: match date == "NA" || !date.chars().all(|c| c.is_ascii_digit()) {
+            true => String::new(),
+            false => date.to_string(),
+        },
+        title,
+    })
+}
+
+/// Is this a plain `YYYYMMDD`, and so comparable without asking yt-dlp? Its
+/// relative forms — `today`, `now-6months` — are not.
+pub fn is_plain_date(text: &str) -> bool {
+    text.len() == 8 && text.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Only what would end the quoted string or escape the next character.

@@ -4,7 +4,8 @@ use crate::controllers::app::App;
 use crate::controllers::keys::{Dialog, Field, Pick};
 use crate::models::download::{Download, Overrides, Progress, Status, Update};
 use crate::models::state::SavedDownload;
-use crate::models::ytdlp::{DateRange, Listing};
+use crate::models::log;
+use crate::models::ytdlp::Listing;
 use crate::models::{self, aria2, backend, pick, queue, ytdlp};
 use crate::utils::parse::{bytes, for_each_line};
 
@@ -86,14 +87,21 @@ impl App {
         let caught = rule.captures(url).unwrap_or_default();
         if over.dir.is_empty() {
             if let Some(dir) = &rule.directory {
-                over.dir = crate::utils::expand_home(&rule.fill(dir, &caught));
+                match rule.fill(dir, &caught) {
+                    Some(dir) => over.dir = crate::utils::expand_home(&dir),
+                    // Better the download directory than a directory called
+                    // `$1`: the rule wants a capture its pattern never makes.
+                    None => log::warn(format!(
+                        "rule directory {dir} wants a capture the pattern does not make"
+                    )),
+                }
             }
         }
         if let Some(name) = &rule.backend {
             over.backend = name.clone();
         }
-        match &rule.queue {
-            Some(name) => self.queue_named(&rule.fill(name, &caught)),
+        match rule.queue.as_ref().and_then(|name| rule.fill(name, &caught)) {
+            Some(name) => self.queue_named(&name),
             None => queue,
         }
     }
@@ -133,6 +141,7 @@ impl App {
         let queue = self.route(url, queue, &mut over);
         let Some(backend) = backend_for(url, &over) else {
             self.message = format!("no backend accepts {url}");
+            log::warn(format!("no backend accepts {url}"));
             return;
         };
         let id = self.next_id;
@@ -149,6 +158,7 @@ impl App {
             pid: None,
             tries: 0,
         });
+        log::info(format!("[{id}] queued {url} ({})", backend.name()));
         self.message = format!("queued {url}");
         self.save_state();
         self.pump();
@@ -202,14 +212,19 @@ impl App {
     pub(crate) fn list_playlist(&mut self, listing: Listing, confirm: bool) {
         let tx = self.tx.clone();
         let Listing { url, queue, over, dates, .. } = listing;
-        self.message = match dates.is_empty() {
-            true => format!("expanding playlist {url}…"),
-            // Every entry has to be opened for its date, so say so.
-            false => format!("reading upload dates for {url} — this is slower…"),
+        // The exact pass is only for what the fast one cannot answer.
+        let exact = !dates.is_empty();
+        self.message = match exact {
+            false => format!("expanding playlist {url}…"),
+            true => format!("reading exact upload dates for {url} — this is slower…"),
         };
 
         std::thread::spawn(move || {
-            let mut child = match ytdlp::list_command(&url, &dates)
+            let mut command = match exact {
+                true => ytdlp::dated_list_command(&url, &dates),
+                false => ytdlp::list_command(&url),
+            };
+            let mut child = match command
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .stdin(Stdio::null())
@@ -229,7 +244,7 @@ impl App {
                 // Confirming holds them back, so the picker gets the list in
                 // one piece; otherwise each one is queued as it arrives.
                 if !confirm {
-                    let _ = tx.send(Update::Discovered(queue, entry.0.clone(), over.clone()));
+                    let _ = tx.send(Update::Discovered(queue, entry.url.clone(), over.clone()));
                 }
                 entries.push(entry);
             });
@@ -285,11 +300,26 @@ impl App {
                 pick.picked = pick.shown();
                 pick.at = 0;
             }
-            Field::Dates => {
+            Field::From | Field::To => {
+                let typed = ytdlp::date(buf);
                 let mut listing = pick.listing.clone();
-                listing.dates = DateRange::parse(buf);
-                self.list_playlist(listing, true);
-                return true;
+                match field {
+                    Field::To => listing.dates.before = typed.clone(),
+                    _ => listing.dates.after = typed.clone(),
+                }
+                // The listing already carries a date per entry, so a plain
+                // date filters on screen and costs nothing. Only a relative
+                // date — or a site whose listing had no dates at all — needs
+                // yt-dlp to work it out, one entry at a time.
+                let needs_yt_dlp = (!typed.is_empty() && !ytdlp::is_plain_date(&typed))
+                    || (pick.undated() == pick.listing.entries.len() && !typed.is_empty());
+                if needs_yt_dlp {
+                    self.list_playlist(listing, true);
+                    return true;
+                }
+                pick.listing.dates = listing.dates;
+                pick.picked = pick.shown();
+                pick.at = 0;
             }
         }
         false
@@ -299,8 +329,8 @@ impl App {
     pub fn add_listed(&mut self, pick: &Pick) {
         let mut picked: Vec<usize> = pick.picked.clone();
         picked.sort_unstable();
-        for (url, _) in picked.iter().filter_map(|i| pick.listing.entries.get(*i)) {
-            self.enqueue(url, pick.listing.queue, pick.listing.over.clone());
+        for entry in picked.iter().filter_map(|i| pick.listing.entries.get(*i)) {
+            self.enqueue(&entry.url, pick.listing.queue, pick.listing.over.clone());
         }
         self.message =
             format!("queued {} of {} entries", picked.len(), pick.listing.entries.len());
@@ -357,6 +387,18 @@ impl App {
         };
         let Some(backend) = backend_for(&url, &over) else { return };
         let name = backend.name();
+        // Where this one writes, made and proven writable before the backend
+        // is asked to do it — its own complaint arrives as a bare exit code.
+        let dir = match over.dir.is_empty() {
+            true => self.dir.clone(),
+            false => std::path::PathBuf::from(&over.dir),
+        };
+        if let Err(e) = crate::utils::prepare_dir(&dir) {
+            log::error(format!("[{id}] {e}"));
+            self.downloads[at].status = Status::Failed(e.clone());
+            self.message = e;
+            return;
+        }
         match backend::run(backend, &url, &self.dir, &over, id, self.tx.clone()) {
             Ok(pid) => {
                 let d = &mut self.downloads[at];

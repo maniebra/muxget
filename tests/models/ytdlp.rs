@@ -37,42 +37,56 @@ fn no_playlist_option_disables_expansion() {
 }
 
 #[test]
-fn a_listed_line_splits_into_url_and_title() {
-    use muxget::models::ytdlp::entry;
+fn a_listed_line_splits_into_url_date_and_title() {
+    use muxget::models::ytdlp::{entry, Entry};
+
     assert_eq!(
-        entry("https://y.com/watch?v=a\tSome Title"),
-        Some(("https://y.com/watch?v=a".into(), "Some Title".into()))
+        entry("https://y.com/watch?v=a\t20220802\tSome Title"),
+        Some(Entry {
+            url: "https://y.com/watch?v=a".into(),
+            date: "20220802".into(),
+            title: "Some Title".into(),
+        })
     );
+    // yt-dlp prints NA for what it has no value for; a site with no dates in
+    // its index leaves the entry usable without one.
+    let none = entry("https://y.com/watch?v=b\tNA\tNo Date").unwrap();
+    assert_eq!((none.date.as_str(), none.title.as_str()), ("", "No Date"));
     // An old yt-dlp, or an entry with no title, still gives a usable url.
-    assert_eq!(entry("https://y.com/watch?v=b"), Some(("https://y.com/watch?v=b".into(), String::new())));
+    assert_eq!(entry("https://y.com/watch?v=c").unwrap().url, "https://y.com/watch?v=c");
     assert_eq!(entry("[youtube:tab] Extracting URL"), None, "log noise is not an entry");
 }
 
 #[test]
-fn a_date_range_is_parsed_and_changes_how_the_listing_runs() {
-    use muxget::models::ytdlp::{list_command, DateRange};
+fn dates_come_with_the_listing_and_only_fall_back_when_they_cannot() {
+    use muxget::models::ytdlp::{date, dated_list_command, is_plain_date, list_command, DateRange};
 
-    let open = DateRange::parse("");
-    assert!(open.is_empty());
-    // A flat listing is one request for the whole playlist.
-    let flat = format!("{:?}", list_command("https://y.com/playlist?list=x", &open));
-    assert!(flat.contains("--flat-playlist") && !flat.contains("--dateafter"));
+    // The fast pass: one request for the whole playlist, dates included.
+    // `approximate_date` is what puts them in a flat listing at all.
+    let fast = format!("{:?}", list_command("https://y.com/playlist?list=x"));
+    assert!(fast.contains("--flat-playlist"));
+    assert!(fast.contains("approximate_date"), "no dates without it");
+    assert!(fast.contains("upload_date"), "and they are printed per entry");
 
-    let range = DateRange::parse("2020-01-01..2023/12/31");
-    assert_eq!(range.after, "20200101", "dashes are for people, not yt-dlp");
-    assert_eq!(range.before, "20231231");
-    assert_eq!(range.typed(), "20200101..20231231", "and it goes back into the field");
+    // Dashes and slashes are for people; yt-dlp wants the digits.
+    assert_eq!(date("2020-01-01"), "20200101");
+    assert_eq!(date("2023/12/31"), "20231231");
+    assert_eq!(date(""), "", "an empty end stays open");
+    // Its own shorthand passes through untouched, and is not comparable here.
+    assert_eq!(date("now-6months"), "now-6months");
+    assert!(is_plain_date("20200101") && !is_plain_date("now-6months") && !is_plain_date("2020"));
 
-    // Dates are only in the full metadata, so the flat pass has to go.
-    let dated = format!("{:?}", list_command("https://y.com/playlist?list=x", &range));
-    assert!(!dated.contains("--flat-playlist"));
-    assert!(dated.contains("--dateafter") && dated.contains("20200101"));
-    assert!(dated.contains("--datebefore") && dated.contains("20231231"));
-    assert!(dated.contains("webpage_url"), "the page, not the media stream");
+    // The slow pass exists for what the fast one cannot answer, and hands the
+    // filtering to yt-dlp.
+    let both = DateRange { after: date("2020-01-01"), before: date("2023-12-31") };
+    let slow = format!("{:?}", dated_list_command("https://y.com/playlist?list=x", &both));
+    assert!(!slow.contains("--flat-playlist"), "exact dates need the full extraction");
+    assert!(slow.contains("--dateafter") && slow.contains("20200101"));
+    assert!(slow.contains("--datebefore") && slow.contains("20231231"));
+    assert!(slow.contains("webpage_url"), "the page, not the media stream");
 
-    // One open end, and yt-dlp's own shorthand, both survive as typed.
-    let after = DateRange::parse("now-6months..");
-    assert_eq!((after.after.as_str(), after.before.as_str()), ("now-6months", ""));
-    let before = DateRange::parse("..today");
-    assert_eq!((before.after.as_str(), before.before.as_str()), ("", "today"));
+    // One end alone leaves the other open.
+    let from = DateRange { after: date("2020-01-01"), ..Default::default() };
+    let slow = format!("{:?}", dated_list_command("https://y.com/x", &from));
+    assert!(slow.contains("--dateafter") && !slow.contains("--datebefore"));
 }

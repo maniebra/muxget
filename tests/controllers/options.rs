@@ -194,6 +194,8 @@ mod settings {
         p.on_key(KeyCode::Tab);
         assert_eq!(TABS[p.tab], "categories");
         p.on_key(KeyCode::Tab);
+        assert_eq!(TABS[p.tab], "channels");
+        p.on_key(KeyCode::Tab);
         assert_eq!(TABS[p.tab], "log");
         p.on_key(KeyCode::Tab);
         assert_eq!(TABS[p.tab], "general", "wraps around");
@@ -348,8 +350,8 @@ mod logging {
         assert_eq!(entries[2].level, Level::Error);
         assert!(entries[0].at.len() == 8 && entries[0].at.contains(':'), "stamped HH:MM:SS");
 
-        // Tab 4 is the log; it scrolls and `G` jumps to the newest line.
-        let mut p = Settings::open(4, "aria2c", Vec::new());
+        // Tab 5 is the log; it scrolls and `G` jumps to the newest line.
+        let mut p = Settings::open(5, "aria2c", Vec::new());
         assert_eq!(p.rows(), 3);
         p.on_key(KeyCode::Char('G'));
         assert_eq!(p.cursor, 2);

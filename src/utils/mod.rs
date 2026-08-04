@@ -219,6 +219,57 @@ pub fn reap(pid: u32, name: &str) -> bool {
     crate::models::download::signal(pid, "-KILL")
 }
 
+/// Today as `YYYYMMDD`, UTC — the form yt-dlp reads dates in. Days since the
+/// epoch turned into a civil date by Howard Hinnant's algorithm, which is
+/// exact for every date this will ever see and shorter than a date crate.
+pub fn today() -> String {
+    let (y, m, d) = civil(today_days());
+    format!("{y:04}{m:02}{d:02}")
+}
+
+/// Today as days since the epoch, which is what date arithmetic wants.
+pub fn today_days() -> i64 {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    secs as i64 / 86_400
+}
+
+/// A `YYYYMMDD` as days since the epoch, so two dates can be subtracted.
+/// `None` for anything that is not one.
+pub fn days_of(date: &str) -> Option<i64> {
+    if date.len() != 8 || !date.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let n = |range: std::ops::Range<usize>| date[range].parse::<i64>().ok();
+    Some(days_from_civil(n(0..4)?, n(4..6)?, n(6..8)?))
+}
+
+/// The inverse of [`civil`], by the same era arithmetic.
+pub fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = y - i64::from(m <= 2);
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// Days since 1970-01-01 as (year, month, day). Eras of 400 years, each of
+/// which has exactly 146097 days, so the leap rules need no special cases.
+pub fn civil(days: i64) -> (i64, i64, i64) {
+    // Shift the epoch to 0000-03-01, which puts the leap day last in a year.
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (yoe + era * 400 + i64::from(m <= 2), m, d)
+}
+
 /// Only `~`, which is what a typed path actually needs; the shell is not
 /// involved here so nothing else would be expanded anyway.
 pub fn expand_home(path: &str) -> String {

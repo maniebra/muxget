@@ -212,43 +212,64 @@ impl App {
     pub(crate) fn list_playlist(&mut self, listing: Listing, confirm: bool) {
         let tx = self.tx.clone();
         let Listing { url, queue, over, dates, .. } = listing;
-        // The exact pass is only for what the fast one cannot answer.
-        let exact = !dates.is_empty();
-        self.message = match exact {
+        // A relative date — `now-6months`, `today` — is not a date until
+        // yt-dlp resolves it, so nothing here can compare against one. That
+        // is the only case still worth opening every entry for.
+        let relative = [&dates.after, &dates.before]
+            .iter()
+            .any(|d| !d.is_empty() && !ytdlp::is_plain_date(d));
+        self.message = match relative {
             false => format!("expanding playlist {url}…"),
             true => format!("reading exact upload dates for {url} — this is slower…"),
         };
 
         std::thread::spawn(move || {
-            let mut command = match exact {
-                true => ytdlp::dated_list_command(&url, &dates),
+            let listed = match relative {
+                true => ytdlp::dated_list_command(std::slice::from_ref(&url), &dates),
                 false => ytdlp::list_command(&url),
             };
-            let mut child = match command
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null())
-                .stdin(Stdio::null())
-                .spawn()
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    let _ = tx.send(Update::Notice(format!("yt-dlp: {e}")));
-                    return;
-                }
-            };
-            let stdout = child.stdout.take().expect("piped above");
+            let today = crate::utils::today_days();
+            // Judging is for a plain date range the fast pass can be measured
+            // against; the slow pass has already done its own filtering.
+            let judged = !relative && !dates.is_empty();
 
             let mut entries = Vec::new();
-            for_each_line(stdout, |line| {
-                let Some(entry) = ytdlp::entry(line) else { return };
+            // Entries whose approximate date lands too near an end of the
+            // range to call — the only ones that cost a request each.
+            let mut unsure = Vec::new();
+            let send = |entry: ytdlp::Entry, entries: &mut Vec<ytdlp::Entry>| {
                 // Confirming holds them back, so the picker gets the list in
                 // one piece; otherwise each one is queued as it arrives.
                 if !confirm {
                     let _ = tx.send(Update::Discovered(queue, entry.url.clone(), over.clone()));
                 }
                 entries.push(entry);
-            });
-            let _ = child.wait();
+            };
+
+            if let Err(e) = for_each_listed(listed, |entry| {
+                match judged.then(|| ytdlp::judge(&entry, &dates, today)) {
+                    Some(ytdlp::Verdict::Drop) => {}
+                    Some(ytdlp::Verdict::Unsure) => unsure.push(entry),
+                    _ => send(entry, &mut entries),
+                }
+            }) {
+                let _ = tx.send(Update::Notice(format!("yt-dlp: {e}")));
+                return;
+            }
+
+            // Second pass, over the handful still in doubt: their real upload
+            // dates, with yt-dlp itself dropping the ones outside the range.
+            if !unsure.is_empty() {
+                let urls: Vec<String> = unsure.iter().map(|e| e.url.clone()).collect();
+                let _ = tx.send(Update::Notice(format!(
+                    "checking the exact dates of {} entries near the cutoff…",
+                    urls.len()
+                )));
+                let _ = for_each_listed(ytdlp::dated_list_command(&urls, &dates), |entry| {
+                    send(entry, &mut entries);
+                });
+            }
+
             if entries.is_empty() {
                 let _ = tx.send(Update::Notice(format!("no playlist entries found in {url}")));
                 return;
@@ -788,4 +809,27 @@ fn backend_for(url: &str, over: &Overrides) -> Option<Box<dyn backend::Backend>>
         true => pick(url),
         false => models::named(&over.backend).or_else(|| pick(url)),
     }
+}
+
+/// Run a listing command and hand over each entry it prints. Only the
+/// spawn can fail in a way worth reporting: a listing that comes back
+/// empty is a fact about the playlist, not an error.
+fn for_each_listed(
+    mut command: std::process::Command,
+    f: impl FnMut(ytdlp::Entry),
+) -> std::io::Result<()> {
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .spawn()?;
+    let stdout = child.stdout.take().expect("piped above");
+    let mut f = f;
+    for_each_line(stdout, |line| {
+        if let Some(entry) = ytdlp::entry(line) {
+            f(entry);
+        }
+    });
+    let _ = child.wait();
+    Ok(())
 }

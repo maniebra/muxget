@@ -240,6 +240,16 @@ impl App {
                 Action::PrevTheme => self.set_theme(self.theme.prev(&self.themes)),
                 Action::ToggleNerd => self.toggle_nerd(),
                 Action::ToggleConfirmPlaylist => self.toggle_confirm_playlist(),
+                // Both close the panel first: it owns the keyboard, and a
+                // single channel's sync ends in a picker that needs it.
+                Action::SyncChannel(at) => {
+                    self.close_settings();
+                    self.sync_channels(Some(at));
+                }
+                Action::SyncChannels => {
+                    self.close_settings();
+                    self.sync_channels(None);
+                }
                 Action::EditDir => {
                     self.close_settings();
                     self.dialog = Some(Dialog::SetDir(self.dir.display().to_string()));
@@ -466,6 +476,8 @@ impl App {
             KeyCode::Char('s') => {
                 self.settings = Some(Settings::open(0, "aria2c", self.rules.clone()))
             }
+            // Every channel at once; one at a time is `s` on its row.
+            KeyCode::Char('S') => self.sync_channels(None),
             KeyCode::Char('a') => self.dialog = Some(Dialog::Add(Form::default())),
             KeyCode::Char('c') => self.dialog = Some(Dialog::Crawl(Form::default())),
             KeyCode::Char('v') => self.paste(),

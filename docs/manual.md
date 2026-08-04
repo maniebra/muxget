@@ -229,21 +229,74 @@ youtubetab:approximate_date`). **These dates are approximate** — rounded the
 way the site displays them, so one can be months out. They are right for
 "everything since 2020" and wrong for "everything in the first week of March".
 
-Two things still need the slow way, and muxget falls back to it by itself,
-saying so in the status line while it runs:
+Approximate is still enough to be exact, because muxget only pays for the
+entries the approximation cannot settle. Each listed date is judged against the
+range with a margin around it — a tenth of the entry's age, so a video from
+last month is trusted to within days and one from five years ago to within
+months. Entries clearly inside the range are taken and entries clearly outside
+it are dropped, both for free. Only the few that land within the margin of an
+end are opened for their real upload date, in one further yt-dlp run over just
+those urls, with yt-dlp itself doing the final filtering. A month-old cutoff on
+a thousand-video channel usually means one listing and a handful of lookups
+instead of a thousand.
 
-- a relative date — `today`, `now-6months` — which only yt-dlp can resolve;
-- a site whose listing carries no dates at all.
+One case still needs the whole slow way, and muxget falls back to it by itself,
+saying so in the status line: a relative date — `today`, `now-6months` — which
+nothing but yt-dlp can resolve into something comparable.
 
-Then every entry is opened for its exact date, which costs a request each.
 An entry the listing gave no date for is never hidden by a date filter: it
-stays in the list, without a date beside it, rather than disappearing into a
+counts as undecided and goes to the exact pass, rather than disappearing into a
 comparison it cannot answer. Anything else — a rate cap, a user name — comes from the
 add form, as it does without the picker, and per-row edits are still available
 after queueing.
 
 Set `--no-playlist` in the yt-dlp options and expansion is skipped — muxget
 respects the choice and hands the url over whole.
+
+### Channel sync
+
+A channel you follow does not want re-listing from the beginning every time.
+The **channels** tab of `s` keeps the ones you want with the day each was last
+synced:
+
+| key | does |
+|---|---|
+| `n` | add a channel — type its url |
+| `Enter` | edit the url |
+| `d` | edit the last sync date, `2024-01-31` or `20240131` |
+| `x` / `Del` | drop the channel |
+| `s` | sync this channel and pick from what it finds |
+| `S` | sync every channel |
+
+`S` works in the main view too, without opening the panel.
+
+Syncing lists everything the channel uploaded between its last sync and today,
+into the queue you are looking at, and then moves the last sync to today —
+whether or not you queue what comes back, so nothing is listed twice by
+accident. A channel that has never been synced has no lower bound, so the first
+sync is the whole channel; set its date by hand with `d` to start from a day
+you choose.
+
+One channel opens the picker, so you see the entries before they are queued.
+`S` does not: one picker cannot show several channels at once, so every entry
+found is queued. Either way the cutoff is honoured exactly, and the two-pass
+listing above is what keeps that cheap: one request for the channel, then the
+real dates of the few videos sitting close to the last sync.
+
+The list is `~/.config/muxget/channels`, in the same TOML subset the rules file
+uses, and hand-editing it works as well as the panel:
+
+```
+# ~/.config/muxget/channels
+
+[[channel]]
+url = "https://www.youtube.com/@veritasium"
+last_sync = "20260601"
+```
+
+The date is a day, not a moment: a video uploaded later on the day of a sync is
+listed again by the next one. yt-dlp's `--download-archive`, set in the yt-dlp
+options, is what stops it downloading twice.
 
 ### Moving around
 
@@ -637,6 +690,7 @@ by hand are read at startup as before.
 - **backends** — a form over the common aria2c, yt-dlp and wget options.
 - **crawler** — the defaults the crawl dialog opens with: depth, extensions, size range, and the four switches.
 - **categories** — the routing rules, editable in place.
+- **channels** — channels to keep up with, and when each was last synced. See [Channel sync](#channel-sync).
 - **log** — every command muxget ran and everything the backends said.
 
 ### The log
@@ -718,6 +772,7 @@ Everything lives in `$XDG_CONFIG_HOME/muxget`, or `~/.config/muxget`.
 | `state` | downloads, queues, download directory, nerd font choice |
 | `theme` | the remembered theme name |
 | `rules` | routing rules |
+| `channels` | channels to sync, with each one's last sync date |
 | `aria2c.args`, `yt-dlp.args`, `wget.args` | backend flags |
 | `crawl.args` | crawl defaults, from the crawler tab |
 | `themes/*.toml` | your own themes |
@@ -869,6 +924,7 @@ metadata arrives. The sizes are the reliable part until then.
 | `J` `K` | move the download within its queue |
 | `[` `]` / `←` `→` | switch queue |
 | `Tab` / `f` | cycle filter |
+| `S` | sync every channel |
 | `s` | settings |
 | `?` | the built-in manual: tabbed pages, `Tab` to page, `Esc` to close |
 | `q` / `ZZ` / `ZQ` | quit |

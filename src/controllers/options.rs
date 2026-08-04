@@ -1,5 +1,6 @@
 use crossterm::event::KeyCode;
 
+use crate::models::channel::{self, Channel};
 use crate::models::option::{specs, Kind, OptSpec, Preset};
 use crate::models::log;
 use crate::models::rule::{self, Rule};
@@ -183,12 +184,18 @@ pub struct Settings {
     pub rules: Vec<Rule>,
     /// Rule field being typed into, as (row, text).
     pub editing_rule: Option<(usize, String)>,
+    /// Channels to keep up with, edited here and written on the way out.
+    pub channels: Vec<Channel>,
+    /// Channel field being typed into, as (row, the date rather than the url,
+    /// text).
+    pub editing_channel: Option<(usize, bool, String)>,
 }
 
 /// Rows on the categories tab: one header per rule, then its fields.
 pub const RULE_ROWS: usize = 1 + rule::FIELDS.len();
 
-pub const TABS: [&str; 5] = ["general", "backends", "crawler", "categories", "log"];
+pub const TABS: [&str; 6] =
+    ["general", "backends", "crawler", "categories", "channels", "log"];
 pub const GENERAL: [&str; 4] =
     ["theme", "download directory", "nerd font icons", "confirm before dl playlist"];
 
@@ -203,6 +210,10 @@ pub enum Action {
     EditDir,
     ToggleNerd,
     ToggleConfirmPlaylist,
+    /// Sync the channel at this index, picking from what it finds.
+    SyncChannel(usize),
+    /// Sync every channel, queueing everything since each one's last sync.
+    SyncChannels,
 }
 
 impl Settings {
@@ -214,6 +225,8 @@ impl Settings {
             crawl: Options::open("crawl"),
             rules,
             editing_rule: None,
+            channels: channel::load(),
+            editing_channel: None,
         }
     }
 
@@ -239,6 +252,7 @@ impl Settings {
             1 => self.options.specs().len(),
             2 => self.crawl.specs().len(),
             3 => self.rules.len() * RULE_ROWS,
+            4 => self.channels.len(),
             _ => log::entries().len(),
         }
     }
@@ -260,7 +274,46 @@ impl Settings {
         saved
     }
 
+    /// A channel's url or last-sync date was typed into. An empty url deletes
+    /// the channel — there is nothing left to sync.
+    fn accept_channel(&mut self, row: usize, date: bool, text: &str) {
+        let Some(channel) = self.channels.get_mut(row) else { return };
+        let text = text.trim();
+        match date {
+            // Stored the way yt-dlp reads one, however it was typed.
+            true => channel.last_sync = crate::models::ytdlp::date(text),
+            false => channel.url = text.to_string(),
+        }
+        if channel.url.is_empty() {
+            self.channels.remove(row);
+            self.cursor = row.min(self.rows().saturating_sub(1));
+        }
+    }
+
     pub fn on_key(&mut self, key: KeyCode) -> Action {
+        // A channel field being typed into owns the keyboard.
+        if let Some((row, date, mut buf)) = self.editing_channel.take() {
+            match key {
+                KeyCode::Enter => self.accept_channel(row, date, &buf),
+                // Cancelled, but a row added with `n` and never given a url
+                // is not a channel and must not be left behind.
+                KeyCode::Esc => {
+                    let url = self.channels.get(row).map(|c| c.url.clone()).unwrap_or_default();
+                    self.accept_channel(row, false, &url);
+                }
+                KeyCode::Backspace => {
+                    buf.pop();
+                    self.editing_channel = Some((row, date, buf));
+                }
+                KeyCode::Char(c) => {
+                    buf.push(c);
+                    self.editing_channel = Some((row, date, buf));
+                }
+                _ => self.editing_channel = Some((row, date, buf)),
+            }
+            return Action::None;
+        }
+
         // A rule field being typed into owns the keyboard.
         if let Some((row, mut buf)) = self.editing_rule.take() {
             match key {
@@ -345,18 +398,47 @@ impl Settings {
                 }
                 Action::None
             }
+            // Channels: one row each, `s` syncs it, `S` syncs the lot.
+            (4, row, KeyCode::Char('n')) => {
+                let at = (row + 1).min(self.channels.len());
+                self.channels.insert(at, Channel::default());
+                self.cursor = at;
+                self.editing_channel = Some((at, false, String::new()));
+                Action::None
+            }
+            (4, row, KeyCode::Enter) => {
+                if let Some(c) = self.channels.get(row) {
+                    self.editing_channel = Some((row, false, c.url.clone()));
+                }
+                Action::None
+            }
+            (4, row, KeyCode::Char('d')) => {
+                if let Some(c) = self.channels.get(row) {
+                    self.editing_channel = Some((row, true, c.last_sync.clone()));
+                }
+                Action::None
+            }
+            (4, row, KeyCode::Char('x') | KeyCode::Delete) => {
+                if row < self.channels.len() {
+                    self.channels.remove(row);
+                    self.cursor = row.min(self.rows().saturating_sub(1));
+                }
+                Action::None
+            }
+            (4, row, KeyCode::Char('s')) if row < self.channels.len() => Action::SyncChannel(row),
+            (4, _, KeyCode::Char('S')) => Action::SyncChannels,
             // The log is read, not edited; `x` empties it, `G` jumps to the
             // newest line, which is the one worth looking at first.
-            (4, _, KeyCode::Char('x')) => {
+            (5, _, KeyCode::Char('x')) => {
                 log::clear();
                 self.cursor = 0;
                 Action::None
             }
-            (4, _, KeyCode::Char('G') | KeyCode::End) => {
+            (5, _, KeyCode::Char('G') | KeyCode::End) => {
                 self.cursor = self.rows().saturating_sub(1);
                 Action::None
             }
-            (4, _, KeyCode::Char('g') | KeyCode::Home) => {
+            (5, _, KeyCode::Char('g') | KeyCode::Home) => {
                 self.cursor = 0;
                 Action::None
             }

@@ -73,3 +73,43 @@ fn the_settings_panel_changes_the_theme_and_the_directory() {
     app.on_key(KeyCode::Char('t'));
     assert_eq!(app.theme.name, first);
 }
+
+/// A channel is routed on its own url before it is listed. Its entries are
+/// `watch?v=…` links that match no rule written about a channel, so a rule
+/// that names one has to be applied here or never.
+#[test]
+fn syncing_routes_the_channel_by_its_own_url() {
+    use muxget::models::channel::{self, Channel};
+    use muxget::models::rule::Rule;
+
+    // The same throwaway config dir `app_with` uses: the two tests in this
+    // file run at once and both set the variable, so pointing them at one
+    // place is what keeps either from reading the other's.
+    let mut app = app_with(&[]);
+    channel::save(&[Channel {
+        url: "https://www.youtube.com/@veritasium/videos".into(),
+        // Already synced, so the listing is a date range rather than the lot.
+        last_sync: "20260601".into(),
+    }])
+    .expect("temp dir is writable");
+
+    let mut rule = Rule::default();
+    rule.set(2, "youtube.com/@*");
+    rule.set(4, "$1");
+    rule.set(5, "/tmp/muxget-$1");
+    app.rules = vec![rule];
+
+    app.sync_channels(None);
+
+    // The queue the pattern's capture named, created because the rule asked
+    // for it. yt-dlp itself runs off-thread and is not needed to see this.
+    let queue = app
+        .queues
+        .iter()
+        .find(|q| q.name == "veritasium")
+        .expect("routed into the queue the rule names");
+    assert_ne!(queue.id, muxget::models::queue::DEFAULT);
+
+    // And the sync moved on, so the same videos are not listed twice.
+    assert_ne!(channel::load()[0].last_sync, "20260601");
+}

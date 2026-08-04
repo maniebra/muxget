@@ -42,11 +42,16 @@ pub fn list_command(url: &str) -> Command {
     c
 }
 
-/// The slow, exact listing: every entry opened for its real upload date, and
-/// yt-dlp itself doing the filtering. Only for what the fast pass cannot
-/// answer — a site whose index carries no dates, or a relative date like
-/// `now-6months` that has to be resolved against a real one.
-pub fn dated_list_command(url: &str, dates: &DateRange) -> Command {
+/// The slow, exact listing: every url opened for its real upload date, and
+/// yt-dlp itself doing the filtering — only what it prints is inside the
+/// range. A request per url, so it is given the handful the fast pass could
+/// not settle rather than a whole channel; the one exception is a relative
+/// date like `now-6months`, which nothing but yt-dlp can resolve, and which
+/// is handed the playlist url itself.
+///
+/// One invocation for the lot: yt-dlp takes any number of urls, and a second
+/// process start per entry is pure waste.
+pub fn dated_list_command(urls: &[String], dates: &DateRange) -> Command {
     let mut c = Command::new("yt-dlp");
     // `url` is the media stream once an entry is opened for real; the page is
     // what belongs in the download list.
@@ -57,8 +62,58 @@ pub fn dated_list_command(url: &str, dates: &DateRange) -> Command {
     if !dates.before.is_empty() {
         c.arg("--datebefore").arg(&dates.before);
     }
-    c.arg(url);
+    c.args(urls);
     c
+}
+
+/// What the fast listing's approximate date is worth against a date filter.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Verdict {
+    /// Inside the range beyond any doubt — no request needed.
+    Keep,
+    /// Outside it beyond any doubt — no request needed.
+    Drop,
+    /// Close enough to an end of the range that only the real date decides.
+    Unsure,
+}
+
+/// How far out an approximate date may be, in days, for an entry that age.
+/// YouTube's index carries "3 days ago", "3 months ago", "3 years ago", and
+/// the unit it rounds to grows with the age — so the error does too.
+///
+/// A tenth of the age is the calibration knob: too small and a video near the
+/// cutoff is judged on a date that is wrong, too large and the exact pass
+/// gets entries it did not need. It is deliberately generous, since the cost
+/// of being generous is one request and the cost of being wrong is a missed
+/// video.
+pub fn margin(age_days: i64) -> i64 {
+    2 + age_days.max(0) / 10
+}
+
+/// Does this entry's approximate date settle the date filter on its own?
+/// `today` is days since the epoch, passed in so this stays a pure function.
+///
+/// An entry the listing gave no date for is never dropped here — it goes to
+/// the exact pass, which is the only thing that can judge it.
+pub fn judge(entry: &Entry, dates: &DateRange, today: i64) -> Verdict {
+    let Some(day) = crate::utils::days_of(&entry.date) else { return Verdict::Unsure };
+    let margin = margin(today - day);
+    let mut verdict = Verdict::Keep;
+    for (end, cutoff) in [(&dates.after, true), (&dates.before, false)] {
+        let Some(cutoff_day) = crate::utils::days_of(end) else { continue };
+        // How far past the cutoff this entry sits, on the side that keeps it.
+        let past = match cutoff {
+            true => day - cutoff_day,
+            false => cutoff_day - day,
+        };
+        if past < -margin {
+            return Verdict::Drop;
+        }
+        if past <= margin {
+            verdict = Verdict::Unsure;
+        }
+    }
+    verdict
 }
 
 /// A playlist listed but not yet queued, with everything needed to list it

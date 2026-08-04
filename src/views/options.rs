@@ -30,6 +30,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         1 => draw_form(f, app, panel, &panel.options, body),
         2 => draw_form(f, app, panel, &panel.crawl, body),
         3 => draw_categories(f, app, panel, body),
+        4 => draw_channels(f, app, panel, body),
         _ => draw_log(f, app, panel, body),
     }
 
@@ -37,6 +38,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         1 => args::path(panel.options.backend),
         2 => args::path("crawl"),
         3 => config_dir().join("rules"),
+        4 => crate::models::channel::path(),
         // The log is in memory only; nothing to point at on disk.
         _ => std::path::PathBuf::from("in memory · x clears · G newest"),
     };
@@ -218,6 +220,58 @@ fn draw_categories(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
     );
 }
 
+/// Channels to keep up with: one row each, with the day it was last synced.
+/// Syncing lists everything uploaded since that day and moves it to today.
+fn draw_channels(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
+    let t = &app.theme;
+    if panel.channels.is_empty() && panel.editing_channel.is_none() {
+        f.render_widget(
+            Paragraph::new("\n  no channels yet — press `n` to add one")
+                .style(Style::default().bg(t.panel).fg(t.muted))
+                .block(
+                    Block::bordered()
+                        .border_style(Style::default().fg(t.muted).bg(t.panel))
+                        .style(Style::default().bg(t.panel))
+                        .padding(Padding::horizontal(1)),
+                ),
+            area,
+        );
+        return;
+    }
+    let rows = panel.channels.iter().enumerate().map(|(i, c)| {
+        let editing = panel.editing_channel.as_ref().filter(|(row, _, _)| *row == i);
+        let (url, date) = match editing {
+            Some((_, true, buf)) => (c.url.clone(), format!("{buf}▏")),
+            Some((_, false, buf)) => (format!("{buf}▏"), shown_date(&c.last_sync)),
+            None => (c.url.clone(), shown_date(&c.last_sync)),
+        };
+        Row::new(vec![
+            Cell::from(url).style(Style::default().fg(t.fg)),
+            Cell::from(date).style(Style::default().fg(match c.last_sync.is_empty() {
+                true => t.muted,
+                false => t.ok,
+            })),
+        ])
+        .style(Style::default().bg(if i % 2 == 0 { t.panel } else { t.bg }))
+    });
+    render_table(
+        f,
+        app,
+        panel.cursor,
+        rows,
+        [Constraint::Min(20), Constraint::Length(14)],
+        area,
+    );
+}
+
+/// A stored `20240131` as `2024-01-31`; never synced reads as what it means.
+fn shown_date(date: &str) -> String {
+    match date.len() == 8 {
+        true => format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..]),
+        false => "never synced".to_string(),
+    }
+}
+
 /// The log, oldest first, scrolled to wherever the cursor is. Read only —
 /// what happened, happened.
 fn draw_log(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
@@ -306,9 +360,10 @@ fn render_table<'a>(
 fn hints<'a>(panel: &Settings, t: &crate::views::theme::Theme) -> Line<'a> {
     let editing = panel.options.editing.is_some()
         || panel.crawl.editing.is_some()
-        || panel.editing_rule.is_some();
+        || panel.editing_rule.is_some()
+        || panel.editing_channel.is_some();
     let keys: &[(&str, &str)] = match (panel.tab, editing) {
-        (1..=3, true) => &[("Enter", "set"), ("Esc", "cancel"), ("empty", "unset")],
+        (1..=4, true) => &[("Enter", "set"), ("Esc", "cancel"), ("empty", "unset")],
         (0, _) => &[
             ("Tab", "next tab"),
             ("j/k", "move"),
@@ -331,6 +386,14 @@ fn hints<'a>(panel: &Settings, t: &crate::views::theme::Theme) -> Line<'a> {
             ("Esc", "save & close"),
         ],
         (4, _) => &[
+            ("Tab", "next tab"),
+            ("Enter", "url"),
+            ("d", "last sync"),
+            ("n", "new"),
+            ("x", "delete"),
+            ("s/S", "sync one / all"),
+        ],
+        (5, _) => &[
             ("Tab", "next tab"),
             ("j/k", "scroll"),
             ("g/G", "oldest / newest"),

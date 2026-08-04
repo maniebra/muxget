@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
 use crate::controllers::app::App;
+use crate::models::channel;
+use crate::models::download::Overrides;
 use crate::models::rule::{self, Rule};
+use crate::models::ytdlp::{DateRange, Listing};
 use crate::models::state::State;
 use crate::utils::expand_home;
 use crate::views::theme::Theme;
@@ -55,6 +58,51 @@ impl App {
         self.message = format!("saving to {}", self.dir.display());
     }
 
+    /// Everything a channel has uploaded since it was last synced, queued
+    /// into the current queue. `only` names one channel and opens the picker
+    /// for it; `None` syncs every channel and queues what it finds, since one
+    /// picker cannot show several channels at once.
+    ///
+    /// The last-sync date moves to today whether or not the listing is
+    /// picked from, so a sync is never repeated by accident. The file is the
+    /// state, and the panel writes it before this runs.
+    pub fn sync_channels(&mut self, only: Option<usize>) {
+        let mut channels = channel::load();
+        let today = crate::utils::today();
+        let mut synced = 0;
+        for (at, c) in channels.iter_mut().enumerate() {
+            if only.is_some_and(|one| one != at) {
+                continue;
+            }
+            // Routed on the channel's own url, as a playlist added by hand
+            // is: its entries are `watch?v=…` links that match no rule
+            // written about a channel, so the queue and directory a rule
+            // gives it have to be decided here and handed down.
+            let mut over = Overrides::default();
+            let queue = self.route(&c.url, self.queue().id, &mut over);
+            self.list_playlist(
+                Listing {
+                    url: c.url.clone(),
+                    queue,
+                    over,
+                    // An empty `after` is the first sync: everything there is.
+                    dates: DateRange { after: c.last_sync.clone(), before: String::new() },
+                    entries: Vec::new(),
+                },
+                only.is_some(),
+            );
+            c.last_sync = today.clone();
+            synced += 1;
+        }
+        let _ = channel::save(&channels);
+        match (synced, only) {
+            (0, _) => self.message = "no channels to sync — add one in settings".into(),
+            // One channel's message is the listing's own; it ends in a picker.
+            (_, Some(_)) => {}
+            _ => self.message = format!("syncing {synced} channels — this takes a while…"),
+        }
+    }
+
     /// Persist the directory and queues. Called by every action that changes
     /// them, so there is no separate "save settings" step to forget.
     pub fn save_state(&self) {
@@ -79,8 +127,9 @@ impl App {
         let saved = rule::save(&rules);
         // The rules the app routes by, without waiting for a restart.
         self.rules = rules;
+        let channels = channel::save(&panel.channels);
         // Every form is a file, and all of them are written on the way out.
-        self.message = match panel.options.save().and(panel.crawl.save()).and(saved) {
+        self.message = match panel.options.save().and(panel.crawl.save()).and(saved).and(channels) {
             Ok(()) => format!("{} options saved", panel.options.backend),
             Err(e) => format!("could not save options: {e}"),
         };

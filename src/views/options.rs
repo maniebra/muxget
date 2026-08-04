@@ -9,7 +9,7 @@ use crate::controllers::options::{Options, Settings, GENERAL, RULE_ROWS, TABS};
 use crate::models::log;
 use crate::models::rule::FIELDS as RULE_FIELDS;
 use crate::models::option::Kind;
-use crate::utils::{args, config_dir};
+use crate::utils::{args, config_dir, edit};
 
 pub fn draw(f: &mut Frame, app: &App) {
     let Some(panel) = &app.settings else { return };
@@ -117,7 +117,7 @@ fn draw_form(f: &mut Frame, app: &App, panel: &Settings, opts: &Options, area: R
     let rows = opts.specs().iter().enumerate().map(|(i, spec)| {
         let editing = opts.editing.as_ref().filter(|_| i == panel.cursor);
         let (mark, value, color) = match (&spec.kind, opts.value(spec.flag), editing) {
-            (_, _, Some(buf)) => ("▸".into(), format!("{buf}▏"), t.accent),
+            (_, _, Some(buf)) => ("▸".into(), edit::caret(buf, opts.caret), t.accent),
             (Kind::Flag, _, _) if opts.is_set(spec.flag) => ("[x]".into(), String::new(), t.ok),
             (Kind::Flag, _, _) => ("[ ]".into(), String::new(), t.muted),
             (Kind::Choice(presets), Some(v), _) => (
@@ -196,7 +196,7 @@ fn draw_categories(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
             let row = at * RULE_ROWS + 1 + i;
             let editing = panel.editing_rule.as_ref().filter(|(r, _)| *r == row);
             let (value, color) = match (editing, rule.get(i)) {
-                (Some((_, buf)), _) => (format!("{buf}▏"), t.accent),
+                (Some((_, buf)), _) => (edit::caret(buf, panel.caret), t.accent),
                 (None, v) if v.is_empty() => (format!("— {}", RULE_HINTS[i]), t.muted),
                 (None, v) => (v, t.ok),
             };
@@ -241,8 +241,8 @@ fn draw_channels(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
     let rows = panel.channels.iter().enumerate().map(|(i, c)| {
         let editing = panel.editing_channel.as_ref().filter(|(row, _, _)| *row == i);
         let (url, date) = match editing {
-            Some((_, true, buf)) => (c.url.clone(), format!("{buf}▏")),
-            Some((_, false, buf)) => (format!("{buf}▏"), shown_date(&c.last_sync)),
+            Some((_, true, buf)) => (c.url.clone(), edit::caret(buf, panel.caret)),
+            Some((_, false, buf)) => (edit::caret(buf, panel.caret), shown_date(&c.last_sync)),
             None => (c.url.clone(), shown_date(&c.last_sync)),
         };
         Row::new(vec![

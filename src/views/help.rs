@@ -30,6 +30,10 @@ pub const PAGES: &[Page] = &[
             "s\tsettings",
             "?\tthis manual",
             "q / ZZ\tquit",
+            "",
+            "Every field takes the usual editing keys: arrows and Home/End move the",
+            "caret, Ctrl or Alt with them moves a word, Alt-Backspace deletes the",
+            "word behind, Ctrl-W back to the last space, Ctrl-U/Ctrl-K to either end.",
         ],
     },
     Page {

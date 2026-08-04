@@ -1,4 +1,5 @@
 pub mod args;
+pub mod edit;
 pub mod parse;
 
 use std::path::{Path, PathBuf};

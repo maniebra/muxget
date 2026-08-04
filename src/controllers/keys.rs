@@ -9,7 +9,7 @@ use crate::controllers::options::{Action, Settings};
 use crate::models::crawl::{wild, Crawl, Found};
 use crate::models::ytdlp::Listing;
 use crate::models::download::Overrides;
-use crate::utils;
+use crate::utils::{self, edit};
 
 /// The add dialog's fields, in display order.
 pub const FORM_LABELS: [&str; 7] = [
@@ -223,17 +223,23 @@ impl App {
                 return false;
             }
         }
-        self.on_key(ev.code)
+        self.on_key_with(ev.code, ev.modifiers)
     }
 
     /// Handle one keypress. Returns true when the app should quit.
     pub fn on_key(&mut self, key: KeyCode) -> bool {
+        self.on_key_with(key, KeyModifiers::NONE)
+    }
+
+    /// The same, with the modifiers held down — which only the text fields
+    /// and the list's paging chords care about.
+    pub fn on_key_with(&mut self, key: KeyCode, mods: KeyModifiers) -> bool {
         if self.help.is_some() {
             self.help_key(key);
             return false;
         }
         if let Some(panel) = &mut self.settings {
-            match panel.on_key(key) {
+            match panel.on_key_with(key, mods) {
                 Action::None => {}
                 Action::Close => self.close_settings(),
                 Action::NextTheme => self.set_theme(self.theme.next(&self.themes)),
@@ -252,6 +258,7 @@ impl App {
                 }
                 Action::EditDir => {
                     self.close_settings();
+                    self.caret = usize::MAX;
                     self.dialog = Some(Dialog::SetDir(self.dir.display().to_string()));
                 }
             }
@@ -264,13 +271,18 @@ impl App {
         }
 
         match self.dialog.take() {
-            Some(dialog) => self.on_dialog_key(dialog, key),
-            None => return self.on_normal_key(key),
+            Some(dialog) => self.on_dialog_key(dialog, key, mods),
+            None => {
+                // Nothing is open, so whatever this key opens starts with its
+                // caret at the end of the text it is prefilled with.
+                self.caret = usize::MAX;
+                return self.on_normal_key(key);
+            }
         }
         false
     }
 
-    fn on_dialog_key(&mut self, dialog: Dialog, key: KeyCode) {
+    fn on_dialog_key(&mut self, dialog: Dialog, key: KeyCode, mods: KeyModifiers) {
         match dialog {
             Dialog::Delete(at) => match key {
                 KeyCode::Enter | KeyCode::Char('y') => {
@@ -297,7 +309,7 @@ impl App {
                 _ => self.dialog = Some(Dialog::QueueDelete(at)),
             },
             Dialog::Add(mut form) => {
-                if !type_in_form(&mut form, key) {
+                if !type_in_form(&mut form, key, mods, &mut self.caret) {
                     self.dialog = Some(Dialog::Add(form));
                     return;
                 }
@@ -315,7 +327,7 @@ impl App {
                 }
             }
             Dialog::Crawl(mut form) => {
-                if !type_in_form(&mut form, key) {
+                if !type_in_form(&mut form, key, mods, &mut self.caret) {
                     self.dialog = Some(Dialog::Crawl(form));
                     return;
                 }
@@ -338,6 +350,11 @@ impl App {
             Dialog::Playlist(mut pick) => {
                 // A field being typed into owns the keyboard until Enter or Esc.
                 if let Some((field, mut buf)) = pick.editing.take() {
+                    if edit::key(&mut buf, &mut self.caret, key, mods) {
+                        pick.editing = Some((field, buf));
+                        self.dialog = Some(Dialog::Playlist(pick));
+                        return;
+                    }
                     match key {
                         KeyCode::Enter => {
                             if self.typed_into_picker(&mut pick, field, &buf) {
@@ -347,19 +364,12 @@ impl App {
                             }
                         }
                         KeyCode::Esc => {}
-                        KeyCode::Backspace => {
-                            buf.pop();
-                            pick.editing = Some((field, buf));
-                        }
-                        KeyCode::Char(c) => {
-                            buf.push(c);
-                            pick.editing = Some((field, buf));
-                        }
                         _ => pick.editing = Some((field, buf)),
                     }
                     self.dialog = Some(Dialog::Playlist(pick));
                     return;
                 }
+                self.caret = usize::MAX;
                 match key {
                     KeyCode::Enter => {
                         self.add_listed(&pick);
@@ -399,27 +409,27 @@ impl App {
                 self.dialog = Some(Dialog::Paste(urls, picked, at));
             }
             Dialog::Edit(at, buf) => {
-                if let Some(text) = self.type_into(buf, key, |b| Dialog::Edit(at, b)) {
+                if let Some(text) = self.type_into(buf, key, mods, |b| Dialog::Edit(at, b)) {
                     self.edit(at, &text);
                 }
             }
             Dialog::SetDir(buf) => {
-                if let Some(text) = self.type_into(buf, key, Dialog::SetDir) {
+                if let Some(text) = self.type_into(buf, key, mods, Dialog::SetDir) {
                     self.set_dir(&text);
                 }
             }
             Dialog::QueueNew(buf) => {
-                if let Some(text) = self.type_into(buf, key, Dialog::QueueNew) {
+                if let Some(text) = self.type_into(buf, key, mods, Dialog::QueueNew) {
                     self.add_queue(&text);
                 }
             }
             Dialog::QueueSchedule(at, buf) => {
-                if let Some(text) = self.type_into(buf, key, |b| Dialog::QueueSchedule(at, b)) {
+                if let Some(text) = self.type_into(buf, key, mods, |b| Dialog::QueueSchedule(at, b)) {
                     self.set_schedule(at, &text);
                 }
             }
             Dialog::QueueRename(at, buf) => {
-                if let Some(text) = self.type_into(buf, key, |b| Dialog::QueueRename(at, b)) {
+                if let Some(text) = self.type_into(buf, key, mods, |b| Dialog::QueueRename(at, b)) {
                     self.rename_queue(at, &text);
                 }
             }
@@ -586,19 +596,16 @@ impl App {
         &mut self,
         mut buf: String,
         key: KeyCode,
+        mods: KeyModifiers,
         reopen: impl Fn(String) -> Dialog,
     ) -> Option<String> {
+        if edit::key(&mut buf, &mut self.caret, key, mods) {
+            self.dialog = Some(reopen(buf));
+            return None;
+        }
         match key {
             KeyCode::Enter => return Some(buf),
             KeyCode::Esc => {}
-            KeyCode::Backspace => {
-                buf.pop();
-                self.dialog = Some(reopen(buf));
-            }
-            KeyCode::Char(c) => {
-                buf.push(c);
-                self.dialog = Some(reopen(buf));
-            }
             _ => self.dialog = Some(reopen(buf)),
         }
         None
@@ -729,16 +736,22 @@ pub fn pick_nav(key: KeyCode, len: usize, picked: &mut Vec<usize>, at: &mut usiz
 /// One keypress into a multi-field form. Returns true when the form is done
 /// with the key — Enter to submit, Esc to drop it — and false while it is
 /// still being typed into.
-fn type_in_form(form: &mut Form, key: KeyCode) -> bool {
+fn type_in_form(form: &mut Form, key: KeyCode, mods: KeyModifiers, caret: &mut usize) -> bool {
     let fields = form.fields.len();
+    if edit::key(&mut form.fields[form.cursor], caret, key, mods) {
+        return false;
+    }
     match key {
         KeyCode::Enter | KeyCode::Esc => return true,
-        KeyCode::Tab | KeyCode::Down => form.cursor = (form.cursor + 1) % fields,
-        KeyCode::BackTab | KeyCode::Up => form.cursor = (form.cursor + fields - 1) % fields,
-        KeyCode::Backspace => {
-            form.fields[form.cursor].pop();
+        // Every field has its own end to start typing at.
+        KeyCode::Tab | KeyCode::Down => {
+            form.cursor = (form.cursor + 1) % fields;
+            *caret = usize::MAX;
         }
-        KeyCode::Char(c) => form.fields[form.cursor].push(c),
+        KeyCode::BackTab | KeyCode::Up => {
+            form.cursor = (form.cursor + fields - 1) % fields;
+            *caret = usize::MAX;
+        }
         _ => {}
     }
     false

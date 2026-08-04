@@ -341,3 +341,39 @@ fn vim_movements_walk_the_list() {
     app.on_key(KeyCode::Char('d'));
     assert!(app.dialog.is_some());
 }
+
+/// The editing keys have to survive the whole route from the terminal event:
+/// `on_key_event` is what carries the modifiers, and a plain `on_key` loses
+/// them by design.
+#[test]
+fn form_fields_take_the_usual_editing_keys() {
+    use crossterm::event::{KeyEvent, KeyModifiers};
+
+    let mut app = app_with(&[]);
+    let press = |app: &mut App, code, mods| {
+        app.on_key_event(KeyEvent::new(code, mods));
+    };
+
+    app.on_key(KeyCode::Char('a'));
+    typed(&mut app, "https://y.com/watch?v=abc");
+
+    // Alt-Backspace takes one part of the url.
+    press(&mut app, KeyCode::Backspace, KeyModifiers::ALT);
+    assert_eq!(url_field(&app), "https://y.com/watch?v=");
+
+    // The caret moves, and typing happens where it is rather than at the end.
+    press(&mut app, KeyCode::Home, KeyModifiers::NONE);
+    press(&mut app, KeyCode::Delete, KeyModifiers::NONE);
+    assert_eq!(url_field(&app), "ttps://y.com/watch?v=");
+    typed(&mut app, "h");
+    assert_eq!(url_field(&app), "https://y.com/watch?v=", "typed at the caret");
+
+    // Moving to the next field puts the caret at its end, not the last one's.
+    press(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+    typed(&mut app, "1-3");
+    press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+    match &app.dialog {
+        Some(Dialog::Add(form)) => assert_eq!(form.fields[1], "1-"),
+        other => panic!("expected the add form, got {other:?}"),
+    }
+}

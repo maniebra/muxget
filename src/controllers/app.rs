@@ -36,6 +36,10 @@ pub struct App {
     pub help: Option<Help>,
     /// Half-typed key sequence, e.g. `g` waiting for `n`. Shows the menu.
     pub pending: Option<char>,
+    /// Where the caret sits in the dialog field being typed into — a byte
+    /// index, with `usize::MAX` meaning the end, which is where a field that
+    /// has just opened starts.
+    pub caret: usize,
     pub message: String,
     pub filter: Filter,
     pub queues: Vec<Queue>,
@@ -113,6 +117,7 @@ impl App {
             settings: None,
             help: None,
             pending: None,
+            caret: usize::MAX,
             message: String::new(),
             filter: Filter::All,
             queues,

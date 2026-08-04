@@ -1,10 +1,10 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyModifiers};
 
 use crate::models::channel::{self, Channel};
 use crate::models::option::{specs, Kind, OptSpec, Preset};
 use crate::models::log;
 use crate::models::rule::{self, Rule};
-use crate::utils::args;
+use crate::utils::{args, edit};
 
 /// The options panel for one backend: a form over `models::option::specs`,
 /// backed by the same `<backend>.args` file the spawner reads.
@@ -15,6 +15,9 @@ pub struct Options {
     pub pairs: Vec<(String, String)>,
     /// Text being typed for the selected value option.
     pub editing: Option<String>,
+    /// Where the caret sits in it. `usize::MAX` means the end, which is
+    /// where a field that has just been opened starts.
+    pub caret: usize,
 }
 
 impl Options {
@@ -24,6 +27,7 @@ impl Options {
             cursor: 0,
             pairs: args::to_pairs(&args::load(backend)),
             editing: None,
+            caret: usize::MAX,
         }
     }
 
@@ -102,6 +106,21 @@ impl Options {
 
     /// Handle a keypress. Returns true when the panel should close and save.
     pub fn on_key(&mut self, key: KeyCode) -> bool {
+        self.on_key_with(key, KeyModifiers::NONE)
+    }
+
+    pub fn on_key_with(&mut self, key: KeyCode, mods: KeyModifiers) -> bool {
+        let editing = self.editing.is_some();
+        let close = self.act(key, mods);
+        // A field that has just opened puts its caret at the end of whatever
+        // it was prefilled with. One check here covers every way to open one.
+        if !editing && self.editing.is_some() {
+            self.caret = usize::MAX;
+        }
+        close
+    }
+
+    fn act(&mut self, key: KeyCode, mods: KeyModifiers) -> bool {
         let Some(spec) = self.specs().get(self.cursor) else {
             return true;
         };
@@ -114,6 +133,10 @@ impl Options {
 
         // Editing a value takes the keyboard until Enter or Esc.
         if let Some(mut buf) = self.editing.take() {
+            if edit::key(&mut buf, &mut self.caret, key, mods) {
+                self.editing = Some(buf);
+                return false;
+            }
             match key {
                 KeyCode::Enter => {
                     if buf.trim().is_empty() {
@@ -123,14 +146,6 @@ impl Options {
                     }
                 }
                 KeyCode::Esc => {}
-                KeyCode::Backspace => {
-                    buf.pop();
-                    self.editing = Some(buf);
-                }
-                KeyCode::Char(c) => {
-                    buf.push(c);
-                    self.editing = Some(buf);
-                }
                 _ => self.editing = Some(buf),
             }
             return false;
@@ -189,6 +204,10 @@ pub struct Settings {
     /// Channel field being typed into, as (row, the date rather than the url,
     /// text).
     pub editing_channel: Option<(usize, bool, String)>,
+    /// Where the caret sits in whichever of the two is open — only ever one
+    /// at a time. `usize::MAX` is the end, where a freshly opened field puts
+    /// it.
+    pub caret: usize,
 }
 
 /// Rows on the categories tab: one header per rule, then its fields.
@@ -227,6 +246,7 @@ impl Settings {
             editing_rule: None,
             channels: channel::load(),
             editing_channel: None,
+            caret: usize::MAX,
         }
     }
 
@@ -291,8 +311,34 @@ impl Settings {
     }
 
     pub fn on_key(&mut self, key: KeyCode) -> Action {
+        self.on_key_with(key, KeyModifiers::NONE)
+    }
+
+    pub fn on_key_with(&mut self, key: KeyCode, mods: KeyModifiers) -> Action {
+        let editing = self.editing();
+        let action = self.act_on(key, mods);
+        // Whichever field just opened starts with its caret at the end.
+        if !editing && self.editing() {
+            self.caret = usize::MAX;
+        }
+        action
+    }
+
+    /// Is any field of the panel being typed into?
+    pub fn editing(&self) -> bool {
+        self.editing_rule.is_some()
+            || self.editing_channel.is_some()
+            || self.options.editing.is_some()
+            || self.crawl.editing.is_some()
+    }
+
+    fn act_on(&mut self, key: KeyCode, mods: KeyModifiers) -> Action {
         // A channel field being typed into owns the keyboard.
         if let Some((row, date, mut buf)) = self.editing_channel.take() {
+            if edit::key(&mut buf, &mut self.caret, key, mods) {
+                self.editing_channel = Some((row, date, buf));
+                return Action::None;
+            }
             match key {
                 KeyCode::Enter => self.accept_channel(row, date, &buf),
                 // Cancelled, but a row added with `n` and never given a url
@@ -301,14 +347,6 @@ impl Settings {
                     let url = self.channels.get(row).map(|c| c.url.clone()).unwrap_or_default();
                     self.accept_channel(row, false, &url);
                 }
-                KeyCode::Backspace => {
-                    buf.pop();
-                    self.editing_channel = Some((row, date, buf));
-                }
-                KeyCode::Char(c) => {
-                    buf.push(c);
-                    self.editing_channel = Some((row, date, buf));
-                }
                 _ => self.editing_channel = Some((row, date, buf)),
             }
             return Action::None;
@@ -316,17 +354,13 @@ impl Settings {
 
         // A rule field being typed into owns the keyboard.
         if let Some((row, mut buf)) = self.editing_rule.take() {
+            if edit::key(&mut buf, &mut self.caret, key, mods) {
+                self.editing_rule = Some((row, buf));
+                return Action::None;
+            }
             match key {
                 KeyCode::Enter => self.accept_rule(row, &buf),
                 KeyCode::Esc => {}
-                KeyCode::Backspace => {
-                    buf.pop();
-                    self.editing_rule = Some((row, buf));
-                }
-                KeyCode::Char(c) => {
-                    buf.push(c);
-                    self.editing_rule = Some((row, buf));
-                }
                 _ => self.editing_rule = Some((row, buf)),
             }
             return Action::None;
@@ -336,7 +370,7 @@ impl Settings {
         let cursor = self.cursor;
         if let Some(form) = self.form().filter(|f| f.editing.is_some()) {
             form.cursor = cursor;
-            form.on_key(key);
+            form.on_key_with(key, mods);
             return Action::None;
         }
         match key {
@@ -347,7 +381,7 @@ impl Settings {
                 self.cursor = (self.cursor + 1).min(self.rows().saturating_sub(1))
             }
             KeyCode::Up | KeyCode::Char('k') => self.cursor = self.cursor.saturating_sub(1),
-            key => return self.act(key),
+            key => return self.act(key, mods),
         }
         Action::None
     }
@@ -357,7 +391,7 @@ impl Settings {
         self.cursor = 0;
     }
 
-    fn act(&mut self, key: KeyCode) -> Action {
+    fn act(&mut self, key: KeyCode, mods: KeyModifiers) -> Action {
         match (self.tab, self.cursor, key) {
             (0, 0, KeyCode::Enter) | (0, 0, KeyCode::Char(' ')) => Action::NextTheme,
             (0, 0, KeyCode::Char('T')) => Action::PrevTheme,
@@ -446,7 +480,7 @@ impl Settings {
                 let cursor = self.cursor;
                 if let Some(form) = self.form() {
                     form.cursor = cursor;
-                    form.on_key(key);
+                    form.on_key_with(key, mods);
                 }
                 Action::None
             }

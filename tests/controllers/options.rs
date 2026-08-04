@@ -8,6 +8,7 @@ fn panel() -> Options {
         cursor: 0,
         pairs: Vec::new(),
         editing: None,
+        caret: usize::MAX,
     }
 }
 
@@ -25,7 +26,7 @@ fn go_to(p: &mut Options, flag: &str) {
 fn the_quality_choice_cycles_through_its_presets() {
     use muxget::models::option::QUALITY;
 
-    let mut p = Options { backend: "yt-dlp", cursor: 0, pairs: Vec::new(), editing: None };
+    let mut p = Options { backend: "yt-dlp", cursor: 0, pairs: Vec::new(), editing: None, caret: usize::MAX };
     go_to(&mut p, "--format");
 
     // Unset lands on the first preset, then walks the list and wraps.

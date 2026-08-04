@@ -962,3 +962,26 @@ metadata arrives. The sizes are the reliable part until then.
 | `Esc` | cancel |
 | `y` / `n` | answer a confirmation |
 | `space` / `a` | pick one / all (crawl results) |
+
+### Typing
+
+Every field in muxget — the add form, the settings panel, every dialog — takes
+the same editing keys, the ones readline gave a shell and a browser address
+bar:
+
+| key | action |
+|---|---|
+| `←` `→` | move the caret a character |
+| `Ctrl-←` `Ctrl-→` or `Alt-←` `Alt-→` | move it a word |
+| `Home` / `End`, or `Ctrl-A` / `Ctrl-E` | start / end of the line |
+| `Backspace` / `Del` | delete the character behind / ahead |
+| `Alt-Backspace` | delete the word behind |
+| `Ctrl-W` | delete back to the last space |
+| `Alt-Del` | delete the word ahead |
+| `Ctrl-U` / `Ctrl-K` | delete back to the start / on to the end |
+
+A word ends at anything that is not a letter or a digit, so `Alt-Backspace` in
+a url takes one path segment at a time. `Ctrl-W` is the shell's version — back
+to the last space — which on a url takes the whole thing.
+
+Moving to another field puts the caret at the end of what is already in it.

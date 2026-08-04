@@ -41,6 +41,10 @@ name = "utils_parse"
 path = "tests/utils/parse.rs"
 
 [[test]]
+name = "utils_edit"
+path = "tests/utils/edit.rs"
+
+[[test]]
 name = "utils_args"
 path = "tests/utils/args.rs"
 

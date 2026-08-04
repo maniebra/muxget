@@ -10,6 +10,7 @@ use crate::controllers::keys::{menu_for, Dialog, Field, Form, Pick, FORM_LABELS,
 use crate::models::crawl::Found;
 use crate::utils::parse::human;
 use crate::views::theme::Theme;
+use crate::utils::edit;
 
 /// What a confirmation is about: the marked rows counted, or the one row the
 /// cursor is on named.
@@ -50,10 +51,10 @@ pub fn draw(f: &mut Frame, app: &App) {
     let (title, body, hint) = match dialog {
         Dialog::Add(form) => (
             "add download",
-            form_lines(t, form),
+            form_lines(t, form, app.caret),
             "Tab next · Enter add · Esc cancel",
         ),
-        Dialog::Edit(_, buf) => ("edit url", field(t, buf), "Enter restart · Esc cancel"),
+        Dialog::Edit(_, buf) => ("edit url", field(t, buf, app.caret), "Enter restart · Esc cancel"),
         Dialog::Delete(at) => (
             "delete download",
             vec![
@@ -89,23 +90,23 @@ pub fn draw(f: &mut Frame, app: &App) {
         ),
         Dialog::SetDir(buf) => (
             "download directory",
-            named(t, "path", buf),
+            named(t, "path", buf, app.caret),
             "Enter save · Esc cancel",
         ),
         Dialog::QueueNew(buf) => (
             "new queue",
-            named(t, "name", buf),
+            named(t, "name", buf, app.caret),
             "Enter create · Esc cancel",
         ),
         Dialog::QueueRename(_, buf) => (
             "rename queue",
-            named(t, "name", buf),
+            named(t, "name", buf, app.caret),
             "Enter rename · Esc cancel",
         ),
         Dialog::QueueSchedule(_, buf) => (
             "queue schedule",
             {
-                let mut lines = named(t, "schedule", buf);
+                let mut lines = named(t, "schedule", buf, app.caret);
                 lines.push(Line::default());
                 for help in [
                     "22:00-06:00 mon-fri · on=2026-08-01 · once",
@@ -120,7 +121,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         ),
         Dialog::Crawl(form) => (
             "crawl a page",
-            crawl_lines(t, form),
+            crawl_lines(t, form, app.caret),
             "Tab next · Enter crawl · Esc cancel",
         ),
         Dialog::Crawled(_, found, picked, at) => (
@@ -141,7 +142,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         ),
         Dialog::Playlist(pick) => (
             "playlist entries",
-            playlist_lines(t, pick),
+            playlist_lines(t, pick, app.caret),
             match pick.editing.is_some() {
                 true => "Enter apply · Esc keep the old value",
                 false => "space pick · a all · / words · t/T dates · d dir · Enter download",
@@ -267,12 +268,12 @@ fn draw_menu(f: &mut Frame, app: &App, prefix: char) {
     );
 }
 
-fn field<'a>(t: &Theme, buf: &str) -> Vec<Line<'a>> {
-    named(t, "url", buf)
+fn field<'a>(t: &Theme, buf: &str, caret: usize) -> Vec<Line<'a>> {
+    named(t, "url", buf, caret)
 }
 
 /// One line per field; only the focused one shows a caret.
-fn form_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
+fn form_lines<'a>(t: &Theme, form: &Form, caret: usize) -> Vec<Line<'a>> {
     let hints = [
         "",
         "one item — e.g. 1-10 with %d or %03d in the url",
@@ -282,14 +283,14 @@ fn form_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
         "no login",
         "no login",
     ];
-    let mut lines = fields(t, form, &FORM_LABELS, &hints, &SECRET_FIELDS);
+    let mut lines = fields(t, form, &FORM_LABELS, &hints, &SECRET_FIELDS, caret);
     lines.push(Line::default());
     lines.extend(preview(t, form));
     lines
 }
 
 /// The crawl form. Same widget, different labels — and no secrets in it.
-fn crawl_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
+fn crawl_lines<'a>(t: &Theme, form: &Form, caret: usize) -> Vec<Line<'a>> {
     // An empty field means the crawler tab's default, so say so rather than
     // naming a built-in that the settings may have replaced.
     let hints = [
@@ -301,7 +302,7 @@ fn crawl_lines<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
         "e.g. 1M-500M — settings › crawler",
         "offline · any-domain/same-domain, under-path/any-path, no-robots/robots, flat/nested",
     ];
-    fields(t, form, &CRAWL_LABELS, &hints, &[false; 7])
+    fields(t, form, &CRAWL_LABELS, &hints, &[false; 7], caret)
 }
 
 fn fields<'a>(
@@ -310,6 +311,7 @@ fn fields<'a>(
     labels: &[&str; 7],
     hints: &[&str; 7],
     secret: &[bool; 7],
+    caret: usize,
 ) -> Vec<Line<'a>> {
     labels
         .iter()
@@ -324,7 +326,9 @@ fn fields<'a>(
             };
             let value = &shown_value;
             let shown = match (on, value.is_empty()) {
-                (true, _) => format!("{value}▏"),
+                // A password draws its caret past the dots, not inside them.
+                (true, _) if secret[i] => format!("{value}▏"),
+                (true, _) => edit::caret(value, caret),
                 (false, true) => format!("— {}", hints[i]),
                 (false, false) => value.clone(),
             };
@@ -383,13 +387,13 @@ fn preview<'a>(t: &Theme, form: &Form) -> Vec<Line<'a>> {
     lines
 }
 
-fn named<'a>(t: &Theme, label: &str, buf: &str) -> Vec<Line<'a>> {
+fn named<'a>(t: &Theme, label: &str, buf: &str, caret: usize) -> Vec<Line<'a>> {
     vec![
         Line::styled(label.to_string(), Style::default().fg(t.muted)),
         Line::from(vec![
             Span::styled("▸ ", Style::default().fg(t.accent)),
             Span::styled(
-                format!("{buf}▏"),
+                edit::caret(buf, caret),
                 Style::default().fg(t.fg).add_modifier(Modifier::BOLD),
             ),
         ]),
@@ -408,11 +412,11 @@ fn found_lines<'a>(t: &Theme, found: &[Found], picked: &[usize], at: usize) -> V
     pick_lines(t, head, &rows, picked, at)
 }
 
-fn playlist_lines<'a>(t: &Theme, pick: &Pick) -> Vec<Line<'a>> {
+fn playlist_lines<'a>(t: &Theme, pick: &Pick, caret: usize) -> Vec<Line<'a>> {
     let shown = pick.shown();
     // The field being typed into shows its cursor; the rest show their value.
     let field = |which: Field, label: &str, value: &str, empty: &'static str| match pick.editing {
-        Some((f, ref buf)) if f == which => format!("{label}: {buf}▏"),
+        Some((f, ref buf)) if f == which => format!("{label}: {}", edit::caret(buf, caret)),
         _ => format!("{label}: {}", if value.is_empty() { empty } else { value }),
     };
     let head = format!(

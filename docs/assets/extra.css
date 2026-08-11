@@ -1,7 +1,674 @@
-.md-typeset table:not([class]) {
+/* ------------------------------------------------------------------
+   muxget docs theme
+
+   The app ships tokyonight as its default, so the site wears the same
+   palette: the docs and the thing they document should look related.
+   ------------------------------------------------------------------ */
+
+:root {
+  --mg-accent: #7aa2f7;
+  --mg-accent-dim: #3d59a1;
+  --mg-ok: #9ece6a;
+  --mg-err: #f7768e;
+  --mg-warn: #e0af68;
+  --mg-purple: #bb9af7;
+  --mg-cyan: #7dcfff;
+
+  --md-code-font: "JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
+  --md-text-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    system-ui, sans-serif;
+}
+
+/* ---- dark, the default look --------------------------------------- */
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 232;
+  --md-default-bg-color: #1a1b26;
+  --md-default-bg-color--light: #1f2030;
+  --md-default-fg-color: #c0caf5;
+  --md-default-fg-color--light: #a9b1d6;
+  --md-default-fg-color--lighter: #565f89;
+  --md-default-fg-color--lightest: #2a2c3d;
+
+  --md-primary-fg-color: #16161e;
+  --md-primary-bg-color: #c0caf5;
+  --md-accent-fg-color: var(--mg-cyan);
+
+  --md-typeset-color: #c0caf5;
+  --md-typeset-a-color: var(--mg-accent);
+  --md-code-bg-color: #16161e;
+  --md-code-fg-color: #a9b1d6;
+  --md-code-hl-keyword-color: var(--mg-purple);
+  --md-code-hl-string-color: var(--mg-ok);
+  --md-code-hl-number-color: var(--mg-warn);
+  --md-code-hl-comment-color: #565f89;
+  --md-code-hl-name-color: #c0caf5;
+  --md-code-hl-operator-color: var(--mg-cyan);
+  --md-code-hl-punctuation-color: #787c99;
+
+  --mg-line: #2a2c3d;
+  --mg-panel: #16161e;
+  --mg-raised: #1f2030;
+}
+
+/* ---- light, the same palette pulled up ---------------------------- */
+
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: #fbfbfe;
+  --md-default-fg-color: #343b58;
+  --md-primary-fg-color: #343b58;
+  --md-primary-bg-color: #fbfbfe;
+  --md-accent-fg-color: #2959aa;
+  --md-typeset-a-color: #2959aa;
+  --md-code-bg-color: #f0f0f6;
+
+  --mg-accent: #2959aa;
+  --mg-line: #e3e3ee;
+  --mg-panel: #f2f2f8;
+  --mg-raised: #ffffff;
+}
+
+/* ---- shell -------------------------------------------------------- */
+
+.md-header {
+  border-bottom: 1px solid var(--mg-line);
+  box-shadow: none;
+}
+
+.md-header__title {
+  font-family: var(--md-code-font);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.md-header__title .md-header__topic:first-child .md-ellipsis::before {
+  content: "$ ";
+  color: var(--mg-accent);
+}
+
+.md-tabs {
+  border-bottom: 1px solid var(--mg-line);
+}
+
+.md-nav {
   font-size: 0.72rem;
 }
 
+.md-nav__title {
+  font-family: var(--md-code-font);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--lighter);
+}
+
+.md-nav__link--active {
+  font-weight: 600;
+}
+
+.md-sidebar--secondary .md-nav__link--active {
+  border-left: 2px solid var(--mg-accent);
+  margin-left: -2px;
+  padding-left: 0.4rem;
+}
+
+.md-search__form {
+  border-radius: 2px;
+  background: var(--mg-raised);
+}
+
+/* ---- type --------------------------------------------------------- */
+
+.md-typeset {
+  font-size: 0.78rem;
+  line-height: 1.72;
+}
+
 .md-typeset h1 {
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  font-size: 1.85rem;
+  line-height: 1.15;
+  color: var(--md-default-fg-color);
+  margin-bottom: 1.2rem;
+}
+
+.md-typeset h2 {
   font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: 1.25rem;
+  margin-top: 2.6rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--mg-line);
+}
+
+.md-typeset h3 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-size: 0.98rem;
+  margin-top: 1.8rem;
+}
+
+.md-typeset h2 code,
+.md-typeset h3 code {
+  font-size: 0.86em;
+  background: transparent;
+  padding: 0;
+  color: var(--mg-accent);
+}
+
+.md-typeset a {
+  text-decoration-color: color-mix(in srgb, var(--mg-accent) 40%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.md-typeset a:hover {
+  text-decoration-color: currentcolor;
+}
+
+/* ---- code --------------------------------------------------------- */
+
+.md-typeset code {
+  font-size: 0.82em;
+  border-radius: 2px;
+  padding: 0.12em 0.36em;
+  border: 1px solid var(--mg-line);
+}
+
+.md-typeset pre > code {
+  border: 1px solid var(--mg-line);
+  border-radius: 3px;
+  padding: 0.9rem 1rem;
+  line-height: 1.62;
+}
+
+.md-typeset .highlight:focus-within > pre > code {
+  border-color: var(--mg-accent-dim);
+}
+
+/* Keyboard keys read as keycaps, since half this manual is keys. */
+.md-typeset kbd {
+  font-family: var(--md-code-font);
+  font-size: 0.74em;
+  font-weight: 600;
+  padding: 0.14em 0.42em;
+  border-radius: 3px;
+  background: var(--mg-raised);
+  color: var(--md-default-fg-color);
+  border: 1px solid var(--mg-line);
+  border-bottom-width: 2px;
+  box-shadow: none;
+  vertical-align: 0.06em;
+}
+
+/* ---- tables ------------------------------------------------------- */
+
+.md-typeset table:not([class]) {
+  font-size: 0.72rem;
+  border: 1px solid var(--mg-line);
+  border-radius: 3px;
+  box-shadow: none;
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--mg-panel);
+  font-family: var(--md-code-font);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--lighter);
+  border-bottom: 1px solid var(--mg-line);
+}
+
+.md-typeset table:not([class]) td {
+  border-top: 1px solid var(--mg-line);
+  vertical-align: top;
+}
+
+/* The key column is the first one nearly everywhere in this manual. */
+.md-typeset table:not([class]) td:first-child {
+  white-space: nowrap;
+}
+
+.md-typeset table:not([class]) tr:hover td {
+  background: color-mix(in srgb, var(--mg-accent) 6%, transparent);
+}
+
+/* ---- buttons ------------------------------------------------------ */
+
+/* Material paints .md-button with --md-primary-fg-color, which here is the
+   near-black header colour. Both variants get their colours stated outright. */
+.md-typeset .md-button {
+  position: relative;
+  overflow: hidden;
+  border-radius: 3px;
+  border-width: 1px;
+  border-color: var(--mg-line);
+  color: var(--md-default-fg-color);
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.5em 1.1em;
+  transition: transform 140ms ease, border-color 140ms ease,
+    background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.md-typeset .md-button:hover,
+.md-typeset .md-button:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--mg-accent);
+  color: var(--mg-accent);
+  background: color-mix(in srgb, var(--mg-accent) 10%, transparent);
+  box-shadow: 0 6px 18px -10px var(--mg-accent);
+}
+
+.md-typeset .md-button--primary {
+  background: var(--mg-accent);
+  border-color: var(--mg-accent);
+  color: #16161e;
+}
+
+.md-typeset .md-button--primary:hover,
+.md-typeset .md-button--primary:focus-visible {
+  background: var(--mg-cyan);
+  border-color: var(--mg-cyan);
+  color: #16161e;
+  box-shadow: 0 8px 22px -10px var(--mg-cyan);
+}
+
+/* A light sweeps across a button on hover, once. */
+.md-typeset .md-button::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 -60%;
+  width: 40%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    color-mix(in srgb, #fff 26%, transparent),
+    transparent
+  );
+  transform: skewX(-18deg);
+  opacity: 0;
+}
+
+.md-typeset .md-button:hover::after {
+  animation: mg-sweep 620ms ease-out;
+}
+
+@keyframes mg-sweep {
+  from { left: -60%; opacity: 1; }
+  to { left: 130%; opacity: 0; }
+}
+
+/* ------------------------------------------------------------------
+   home page
+   ------------------------------------------------------------------ */
+
+.mg-hero {
+  margin: 0 0 3rem;
+}
+
+.mg-hero__eyebrow {
+  font-family: var(--md-code-font);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mg-accent);
+  margin: 0 0 0.9rem;
+}
+
+.md-typeset .mg-hero h1 {
+  font-size: 2.4rem;
+  max-width: 16em;
+  margin: 0 0 0.9rem;
+}
+
+.md-typeset .mg-hero__lede {
+  font-size: 0.95rem;
+  line-height: 1.62;
+  color: var(--md-default-fg-color--light);
+  max-width: 34em;
+  margin: 0 0 1.6rem;
+}
+
+.mg-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.9rem;
+  align-items: center;
+}
+
+/* Markdown wraps the two buttons in a <p>, which would centre against
+   the note as one tall block. Dissolving it makes every button and the
+   note siblings, so they align on one row. */
+.md-typeset .mg-hero__actions > p {
+  display: contents;
+}
+
+.md-typeset .mg-hero__actions .md-button {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.4;
+}
+
+.mg-hero__note {
+  font-family: var(--md-code-font);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: var(--md-default-fg-color--lighter);
+}
+
+/* A terminal frame around the screenshot: it is a terminal app, the
+   chrome tells you that before the caption does. */
+.mg-term {
+  border: 1px solid var(--mg-line);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--mg-panel);
+  margin: 2rem 0 2.6rem;
+}
+
+.mg-term__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--mg-raised);
+  border-bottom: 1px solid var(--mg-line);
+}
+
+.mg-term__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--md-default-fg-color--lightest);
+}
+
+.mg-term__dot:nth-child(1) { background: var(--mg-err); }
+.mg-term__dot:nth-child(2) { background: var(--mg-warn); }
+.mg-term__dot:nth-child(3) { background: var(--mg-ok); }
+
+.mg-term__name {
+  font-family: var(--md-code-font);
+  font-size: 0.66rem;
+  color: var(--md-default-fg-color--lighter);
+  margin-left: 0.4rem;
+}
+
+.md-typeset .mg-term img {
+  display: block;
+  width: 100%;
+  margin: 0;
+  border-radius: 0;
+}
+
+/* Feature grid. */
+.mg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1px;
+  background: var(--mg-line);
+  border: 1px solid var(--mg-line);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 1.6rem 0 2.4rem;
+}
+
+.mg-card {
+  position: relative;
+  background: var(--md-default-bg-color);
+  padding: 1.15rem 1.25rem 1.3rem;
+  transition: background-color 220ms ease, transform 220ms ease;
+}
+
+/* An accent rule grows along the top edge on hover. */
+.mg-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 0;
+  background: var(--mg-accent);
+  transition: width 320ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.mg-card:hover {
+  background: var(--mg-panel);
+}
+
+.mg-card:hover::before {
+  width: 100%;
+}
+
+.md-typeset .mg-card h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.md-typeset .mg-card h3::before {
+  content: "▸";
+  color: var(--mg-accent);
+  display: inline-block;
+  margin-right: 0.45em;
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.mg-card:hover h3::before {
+  transform: translateX(3px);
+}
+
+.md-typeset .mg-card p {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Command sampler. */
+.mg-cmds {
+  border: 1px solid var(--mg-line);
+  border-radius: 4px;
+  background: var(--mg-panel);
+  padding: 1rem 1.1rem;
+  margin: 1.6rem 0 2.4rem;
+  font-family: var(--md-code-font);
+  font-size: 0.72rem;
+  line-height: 2;
+  overflow-x: auto;
+}
+
+.mg-cmds__line {
+  white-space: nowrap;
+}
+
+.mg-cmds__prompt {
+  color: var(--mg-accent);
+  user-select: none;
+}
+
+.mg-cmds__cmd {
+  color: var(--md-default-fg-color);
+}
+
+.mg-cmds__note {
+  color: var(--md-default-fg-color--lighter);
+}
+
+/* ------------------------------------------------------------------
+   motion
+
+   Everything here is decoration, so all of it is switched off for
+   anyone who asked their system for less of it.
+   ------------------------------------------------------------------ */
+
+@keyframes mg-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes mg-blink {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes mg-scan {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+/* The hero deals itself out, top to bottom, once. */
+.mg-hero__eyebrow,
+.mg-hero h1,
+.mg-hero__lede,
+.mg-hero__actions,
+.mg-term,
+.mg-cmds {
+  animation: mg-rise 620ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+.mg-hero__eyebrow { animation-delay: 40ms; }
+.mg-hero h1 { animation-delay: 110ms; }
+.mg-hero__lede { animation-delay: 180ms; }
+.mg-hero__actions { animation-delay: 250ms; }
+.mg-term { animation-delay: 320ms; }
+.mg-cmds { animation-delay: 390ms; }
+
+/* The terminal frame lifts slightly when you point at it, and a thin
+   accent line runs across its title bar like a transfer in progress. */
+.mg-term {
+  transition: transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    box-shadow 320ms ease, border-color 320ms ease;
+}
+
+.mg-term:hover {
+  transform: translateY(-3px);
+  border-color: var(--mg-accent-dim);
+  box-shadow: 0 24px 48px -28px var(--mg-accent);
+}
+
+.mg-term__bar {
+  position: relative;
+  overflow: hidden;
+}
+
+.mg-term__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--mg-accent),
+    transparent
+  );
+  animation: mg-scan 4.5s linear infinite;
+}
+
+/* A cursor blinks after the last sampled command. */
+.mg-cmds__caret::after {
+  content: "█";
+  color: var(--mg-accent);
+  animation: mg-blink 1.1s steps(1) infinite;
+}
+
+/* Command lines light up one at a time as you read down them. */
+.mg-cmds__line {
+  transition: color 160ms ease;
+}
+
+.mg-cmds:hover .mg-cmds__line {
+  color: var(--md-default-fg-color--lighter);
+}
+
+.mg-cmds .mg-cmds__line:hover,
+.mg-cmds:hover .mg-cmds__line:hover {
+  color: var(--md-default-fg-color);
+}
+
+/* Anything tagged for reveal starts down and fades up when it scrolls
+   into view. Without JS it is simply visible, which is the right
+   failure. */
+.mg-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 560ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 560ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.mg-reveal.mg-in,
+.no-js .mg-reveal {
+  opacity: 1;
+  transform: none;
+}
+
+.mg-grid .mg-card {
+  transition: background-color 220ms ease, transform 220ms ease,
+    opacity 460ms ease;
+}
+
+/* Cards stagger within the grid as it arrives. */
+.mg-grid.mg-in .mg-card {
+  animation: mg-rise 520ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+.mg-grid.mg-in .mg-card:nth-child(1) { animation-delay: 0ms; }
+.mg-grid.mg-in .mg-card:nth-child(2) { animation-delay: 70ms; }
+.mg-grid.mg-in .mg-card:nth-child(3) { animation-delay: 140ms; }
+.mg-grid.mg-in .mg-card:nth-child(4) { animation-delay: 210ms; }
+.mg-grid.mg-in .mg-card:nth-child(5) { animation-delay: 280ms; }
+.mg-grid.mg-in .mg-card:nth-child(6) { animation-delay: 350ms; }
+
+/* Headings pull their anchor in rather than popping it. */
+.md-typeset .headerlink {
+  transition: opacity 160ms ease, transform 160ms ease;
+  transform: translateX(-4px);
+}
+
+.md-typeset h2:hover .headerlink,
+.md-typeset h3:hover .headerlink {
+  transform: none;
+}
+
+.md-nav__link,
+.md-typeset table:not([class]) td {
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .mg-reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media screen and (max-width: 44.98em) {
+  .md-typeset .mg-hero h1 {
+    font-size: 1.7rem;
+  }
+
+  .md-typeset .mg-hero__lede {
+    font-size: 0.85rem;
+  }
 }

@@ -65,7 +65,7 @@ Every release ships prebuilt packages on the
 | macOS on Apple silicon | the `aarch64-apple-darwin` tarball |
 | Windows | the `.msi` installer, or the bare `.exe` |
 
-Linux and macOS builds cover both x86_64 and arm64.
+Linux and Windows builds cover both x86_64 and arm64.
 
 ## Running it
 

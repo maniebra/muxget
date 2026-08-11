@@ -1,0 +1,92 @@
+site_name: muxget
+site_url: https://maniebra.github.io/muxget/
+site_description: >-
+  muxget is a free open source terminal download manager for Linux, macOS and
+  Windows. Download files, torrents, magnets, YouTube videos and whole websites
+  with queues, schedules, bandwidth limits, resume and a keyboard-driven TUI.
+site_author: mani ebrahimzadeh
+repo_url: https://github.com/maniebra/muxget
+repo_name: maniebra/muxget
+edit_uri: edit/main/docs/
+copyright: MIT licensed. Built by maniebra.
+
+theme:
+  name: material
+  custom_dir: overrides
+  language: en
+  icon:
+    logo: material/download-network
+    repo: fontawesome/brands/github
+  favicon: assets/favicon.svg
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+
+nav:
+  - Download manager: index.md
+  - Install: install.md
+  - Getting started: getting-started.md
+  - Downloading: downloads.md
+  - Channel sync: channels.md
+  - Queues and schedules: queues.md
+  - Crawling websites: crawling.md
+  - Routing rules: rules.md
+  - Settings: settings.md
+  - Themes: themes.md
+  - Files on disk: files.md
+  - How it works: internals.md
+  - Troubleshooting: troubleshooting.md
+  - Keyboard shortcuts: keys.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.keys
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search:
+      lang: en
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/maniebra/muxget
+      name: muxget on GitHub
+  generator: false
+
+extra_css:
+  - assets/extra.css

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {%- set title = config.site_name -%}
+  {%- if page and page.meta and page.meta.title -%}
+    {%- set title = page.meta.title ~ " | " ~ config.site_name -%}
+  {%- elif page and page.title and not page.is_homepage -%}
+    {%- set title = page.title | striptags ~ " | " ~ config.site_name -%}
+  {%- endif -%}
+  {%- set description = config.site_description -%}
+  {%- if page and page.meta and page.meta.description -%}
+    {%- set description = page.meta.description -%}
+  {%- endif -%}
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ description }}">
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:image" content="{{ config.site_url }}assets/shot1.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title }}">
+  <meta name="twitter:description" content="{{ description }}">
+  <meta name="twitter:image" content="{{ config.site_url }}assets/shot1.png">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  {%- if page and page.meta and page.meta.keywords %}
+  <meta name="keywords" content="{{ page.meta.keywords }}">
+  {%- endif %}
+
+  {%- if page and page.is_homepage %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "muxget",
+    "alternateName": "muxget download manager",
+    "applicationCategory": "UtilitiesApplication",
+    "applicationSubCategory": "Download Manager",
+    "operatingSystem": "Linux, macOS, Windows",
+    "url": "{{ config.site_url }}",
+    "downloadUrl": "https://github.com/maniebra/muxget/releases",
+    "softwareVersion": "0.1.0",
+    "license": "https://opensource.org/licenses/MIT",
+    "screenshot": "{{ config.site_url }}assets/shot1.png",
+    "description": "{{ config.site_description | trim }}",
+    "featureList": [
+      "Queue downloads with per-queue concurrency slots",
+      "Resume interrupted downloads",
+      "Torrent and magnet downloads through aria2c",
+      "YouTube and playlist downloads through yt-dlp",
+      "Crawl a website for links and mirror sites offline",
+      "Bandwidth limits, quotas and time-window schedules",
+      "Routing rules by extension, domain, pattern or size"
+    ],
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "author": {
+      "@type": "Person",
+      "name": "mani ebrahimzadeh",
+      "url": "https://github.com/maniebra"
+    }
+  }
+  </script>
+  {%- endif %}
+
+  {%- if page and page.meta and page.meta.faq %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {%- for item in page.meta.faq %}
+      {
+        "@type": "Question",
+        "name": {{ item.q | tojson }},
+        "acceptedAnswer": { "@type": "Answer", "text": {{ item.a | tojson }} }
+      }{{ "," if not loop.last }}
+      {%- endfor %}
+    ]
+  }
+  </script>
+  {%- endif %}
+{% endblock %}

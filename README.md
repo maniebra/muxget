@@ -43,6 +43,7 @@ muxget                                  # empty, add urls with `a`
 muxget https://example.com/linux.iso    # start with urls queued
 muxget -d ~/Downloads -j 5 <url>...     # directory and concurrent slots
 muxget --theme nord                     # theme for this run
+muxget --log-level debug                # chattier log, still in ~/.config/muxget/muxget.log
 ```
 
 | flag | means |
@@ -50,10 +51,22 @@ muxget --theme nord                     # theme for this run
 | `-d <dir>` | download directory for this run, otherwise the saved one, otherwise `$PWD` |
 | `-j <n>` | slots for the default queue this run, 1-16 |
 | `--theme <name>` | theme for this run, or set `MUXGET_THEME` |
+| `--log <file\|off>` | where the log is written, `off` for nowhere, or set `MUXGET_LOG` |
+| `--log-level <level>` | `debug`, `info` (default), `warn`, `error`, or set `MUXGET_LOG_LEVEL` |
+| `--log-format <template>` | line template, `{date} {time} {level} {text}`, or set `MUXGET_LOG_FORMAT` |
+| `--log <file>` | log file for this run, `off` to disable, or set `MUXGET_LOG` (default `<config>/muxget.log`) |
+| `--log-level <level>` | `debug`, `info`, `warn` or `error`, or set `MUXGET_LOG_LEVEL` (default `info`) |
+| `--log-format <template>` | line template, or set `MUXGET_LOG_FORMAT`. Placeholders: `{date} {time} {level} {text}` |
 | `<url>...` | queued on startup, routed by the same rules as `a` |
 
 Nothing on the command line is persisted. `-d`, `-j` and `--theme` override
 the saved values for that run only.
+
+Everything the log tab shows is also appended to `~/.config/muxget/muxget.log`,
+rotated to `muxget.log.1` once it passes 1 MB.
+
+Everything the log tab shows is also appended to `~/.config/muxget/muxget.log`,
+which is rotated to `muxget.log.1` once it passes 1 MB.
 
 ## The keys you need first
 

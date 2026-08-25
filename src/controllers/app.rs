@@ -142,9 +142,18 @@ impl App {
     }
 
     pub fn run(mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
+        let mut logged = String::new();
         loop {
             self.drain();
             self.tick();
+            // Every status line the user is shown, once, in the order they
+            // saw them — cheaper than a log call beside each `self.message`.
+            if self.message != logged {
+                logged.clone_from(&self.message);
+                if !logged.is_empty() {
+                    crate::models::log::info(logged.clone());
+                }
+            }
             terminal.draw(|f| views::ui::draw(f, &self))?;
 
             if !event::poll(Duration::from_millis(200))? {

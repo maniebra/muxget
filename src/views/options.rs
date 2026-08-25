@@ -293,17 +293,14 @@ fn draw_log(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
     }
     let rows = entries.iter().skip(panel.cursor).map(|e| {
         let color = match e.level {
-            log::Level::Info => t.muted,
+            log::Level::Debug => t.muted,
+            log::Level::Info => t.fg,
             log::Level::Warn => t.accent,
             log::Level::Error => t.err,
         };
         Row::new(vec![
             Cell::from(e.at.clone()).style(Style::default().fg(t.muted)),
-            Cell::from(match e.level {
-                log::Level::Info => " ",
-                log::Level::Warn => "!",
-                log::Level::Error => "✗",
-            })
+            Cell::from(e.level.symbol())
             .style(Style::default().fg(color)),
             Cell::from(e.text.clone()).style(Style::default().fg(color)),
         ])

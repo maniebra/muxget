@@ -61,6 +61,10 @@ name = "models_crawl"
 path = "tests/models/crawl.rs"
 
 [[test]]
+name = "models_log"
+path = "tests/models/log.rs"
+
+[[test]]
 name = "models_rule"
 path = "tests/models/rule.rs"
 

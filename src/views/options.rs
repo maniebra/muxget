@@ -101,6 +101,9 @@ fn draw_general(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
         app.dir.display().to_string(),
         if app.nerd { "on".into() } else { "off".into() },
         if app.confirm_playlist { "on".into() } else { "off".into() },
+        if app.pick_quality { "on".into() } else { "off".into() },
+        if app.probe_formats { "on".into() } else { "off".into() },
+        if app.quality_each { "on".into() } else { "off".into() },
     ];
     let rows = GENERAL.iter().zip(values).enumerate().map(|(i, (label, value))| {
         Row::new(vec![

@@ -7,8 +7,8 @@ use crate::views::ui;
 use crate::controllers::crawl;
 use crate::controllers::options::{Action, Settings};
 use crate::models::crawl::{wild, Crawl, Found};
-use crate::models::ytdlp::Listing;
-use crate::models::download::Overrides;
+use crate::models::ytdlp::{Choice, Listing};
+use crate::models::download::{Overrides, Pending};
 use crate::utils::{self, edit};
 
 /// The add dialog's fields, in display order.
@@ -88,6 +88,10 @@ pub enum Dialog {
     /// Urls found in the clipboard, waiting to be confirmed: the urls, which
     /// are picked, and the row the cursor is on.
     Paste(Vec<String>, Vec<usize>, usize),
+    /// Videos held back until a quality is chosen: each url with its own
+    /// settings, what is on offer — the presets, or what yt-dlp reported for
+    /// the url — and the row the cursor is on.
+    Quality(Pending, Vec<Choice>, usize),
 }
 
 /// A playlist listed but not yet queued: its entries, which of them are
@@ -246,6 +250,9 @@ impl App {
                 Action::PrevTheme => self.set_theme(self.theme.prev(&self.themes)),
                 Action::ToggleNerd => self.toggle_nerd(),
                 Action::ToggleConfirmPlaylist => self.toggle_confirm_playlist(),
+                Action::TogglePickQuality => self.toggle_pick_quality(),
+                Action::ToggleProbeFormats => self.toggle_probe_formats(),
+                Action::ToggleQualityEach => self.toggle_quality_each(),
                 // Both close the panel first: it owns the keyboard, and a
                 // single channel's sync ends in a picker that needs it.
                 Action::SyncChannel(at) => {
@@ -395,6 +402,20 @@ impl App {
                     }
                 }
                 self.dialog = Some(Dialog::Playlist(pick));
+            }
+            Dialog::Quality(pending, choices, mut at) => {
+                match key {
+                    KeyCode::Enter | KeyCode::Char(' ') => {
+                        self.add_at_quality(pending, &choices, at);
+                        return;
+                    }
+                    KeyCode::Esc => {
+                        self.cancel_quality();
+                        return;
+                    }
+                    key => move_row(key, choices.len(), &mut at),
+                }
+                self.dialog = Some(Dialog::Quality(pending, choices, at));
             }
             Dialog::Paste(urls, mut picked, mut at) => {
                 match key {
@@ -713,6 +734,15 @@ fn pick_row(
 
 /// Cursor and selection keys shared by the two pick-from-a-list dialogs:
 /// space picks one row, `a` every row or none.
+/// Cursor movement in a single-choice list.
+fn move_row(key: KeyCode, len: usize, at: &mut usize) {
+    match key {
+        KeyCode::Down | KeyCode::Char('j') => *at = (*at + 1).min(len.saturating_sub(1)),
+        KeyCode::Up | KeyCode::Char('k') => *at = at.saturating_sub(1),
+        _ => {}
+    }
+}
+
 pub fn pick_nav(key: KeyCode, len: usize, picked: &mut Vec<usize>, at: &mut usize) {
     match key {
         KeyCode::Down | KeyCode::Char('j') => *at = (*at + 1).min(len.saturating_sub(1)),

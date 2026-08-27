@@ -39,6 +39,49 @@ impl App {
         };
     }
 
+    /// Ask which quality to fetch when a yt-dlp url is added.
+    pub fn toggle_pick_quality(&mut self) {
+        self.pick_quality = !self.pick_quality;
+        self.save_state();
+        self.message = match self.pick_quality {
+            true => "videos ask for a quality".into(),
+            false => "videos use the quality in settings › backends".into(),
+        };
+    }
+
+    /// Probe the url for its real formats instead of offering the presets.
+    /// Probing is per url — format ids are one video's, never a batch's — so
+    /// this asks once per url whatever the other switch says.
+    pub fn toggle_probe_formats(&mut self) {
+        self.probe_formats = !self.probe_formats;
+        self.save_state();
+        self.message = match self.probe_formats {
+            true => "quality picker lists what yt-dlp reports".into(),
+            false => "quality picker lists the presets".into(),
+        };
+    }
+
+    /// Ask for a quality per url rather than once for the whole batch.
+    pub fn toggle_quality_each(&mut self) {
+        self.quality_each = !self.quality_each;
+        self.save_state();
+        self.message = match self.quality_each {
+            true => "quality asked once per url".into(),
+            false => "quality asked once for everything added together".into(),
+        };
+    }
+
+    /// The switches as they are saved.
+    pub fn flags(&self) -> crate::models::state::Flags {
+        crate::models::state::Flags {
+            nerd: self.nerd,
+            confirm_playlist: self.confirm_playlist,
+            pick_quality: self.pick_quality,
+            probe_formats: self.probe_formats,
+            quality_each: self.quality_each,
+        }
+    }
+
     /// Where new downloads are written. Running transfers keep their old dir.
     pub fn set_dir(&mut self, dir: &str) {
         let path = PathBuf::from(expand_home(dir.trim()));
@@ -106,7 +149,7 @@ impl App {
     /// Persist the directory and queues. Called by every action that changes
     /// them, so there is no separate "save settings" step to forget.
     pub fn save_state(&self) {
-        State::save(&self.dir, &self.queues, &self.downloads, self.nerd, self.confirm_playlist);
+        State::save(&self.dir, &self.queues, &self.downloads, self.flags());
     }
 }
 

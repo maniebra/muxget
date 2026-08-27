@@ -8,6 +8,8 @@ use crate::controllers::app::App;
 use crate::controllers::crawl::CRAWL_LABELS;
 use crate::controllers::keys::{menu_for, Dialog, Field, Form, Pick, FORM_LABELS, SECRET_FIELDS};
 use crate::models::crawl::Found;
+use crate::models::download::Overrides;
+use crate::models::ytdlp::Choice;
 use crate::utils::parse::human;
 use crate::views::theme::Theme;
 use crate::utils::edit;
@@ -148,6 +150,11 @@ pub fn draw(f: &mut Frame, app: &App) {
                 false => "space pick · a all · / words · t/T dates · d dir · Enter download",
             },
         ),
+        Dialog::Quality(pending, choices, at) => (
+            "video quality",
+            quality_lines(t, pending, choices, *at),
+            "j/k move · Enter download · Esc cancel",
+        ),
         Dialog::QueueClear(at, all) => (
             match all {
                 true => "clear the queue",
@@ -195,6 +202,8 @@ pub fn draw(f: &mut Frame, app: &App) {
         Dialog::Add(_) => 16,
         Dialog::Crawl(_) => 13,
         Dialog::Crawled(..) | Dialog::Playlist(_) | Dialog::Paste(..) => 20,
+        // Its url line plus the rows on offer.
+        Dialog::Quality(_, choices, _) => quality_rows(choices) as u16 + 6,
         // Its field plus the three lines of spec help.
         Dialog::QueueSchedule(..) => 13,
         _ => 9,
@@ -465,6 +474,40 @@ fn shown_date(date: &str) -> String {
 
 /// A pick-from-a-list body: a header, then one `[x] row` per entry with the
 /// cursor kept on screen — no scroll state of its own.
+/// What is on offer, one per line, with the one under the cursor marked. A
+/// probed list is longer than the popover, so it scrolls with the cursor.
+fn quality_lines<'a>(
+    t: &Theme,
+    pending: &[(String, Overrides)],
+    choices: &[Choice],
+    at: usize,
+) -> Vec<Line<'a>> {
+    let head = match pending.len() {
+        1 => pending[0].0.clone(),
+        n => format!("{n} videos"),
+    };
+    let mut lines =
+        vec![Line::styled(head, Style::default().fg(t.accent)), Line::default()];
+    let capacity = quality_rows(choices);
+    let from = at.saturating_sub(capacity.saturating_sub(1));
+    for (i, choice) in choices.iter().enumerate().skip(from).take(capacity) {
+        let on = i == at;
+        lines.push(Line::styled(
+            format!("{} {}", if on { "▸" } else { " " }, choice.label),
+            Style::default()
+                .fg(if on { t.accent } else { t.fg })
+                .add_modifier(if on { Modifier::BOLD } else { Modifier::empty() }),
+        ));
+    }
+    lines
+}
+
+/// Rows the quality picker shows at once: all of them when they fit, and a
+/// window the cursor walks through when yt-dlp reported a long list.
+fn quality_rows(choices: &[Choice]) -> usize {
+    choices.len().min(14)
+}
+
 fn pick_lines<'a>(t: &Theme, head: String, rows: &[String], picked: &[usize], at: usize) -> Vec<Line<'a>> {
     let mut lines: Vec<Line> = head
         .lines()

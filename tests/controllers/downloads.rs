@@ -600,3 +600,84 @@ fn a_date_filter_uses_the_dates_the_listing_already_carried() {
     let urls: Vec<&str> = app.downloads.iter().map(|d| d.url.as_str()).collect();
     assert_eq!(urls, ["https://y.com/watch?v=b", "https://y.com/watch?v=d"]);
 }
+
+/// The quality picker: on, a video waits for a choice; a direct file never
+/// does; and the chosen preset becomes that download's own `--format`.
+#[test]
+fn the_quality_picker_holds_videos_until_one_is_chosen() {
+    use muxget::controllers::keys::Dialog;
+
+    let mut app = app_with(&[]);
+    app.downloads.clear();
+    app.pick_quality = true;
+
+    // A direct file is aria2c's, and has no quality to pick.
+    app.add("https://example.com/linux.iso");
+    assert!(app.dialog.is_none());
+    assert_eq!(app.downloads.len(), 1);
+
+    // Two videos added together collect in the one dialog.
+    app.add("https://example.com/watch?v=aaa");
+    app.add("https://example.com/watch?v=bbb");
+    let Some(Dialog::Quality(pending, choices, at)) = app.dialog.clone() else {
+        panic!("no quality picker: {:?}", app.dialog)
+    };
+    assert_eq!(pending.len(), 2);
+    assert_eq!(app.downloads.len(), 1, "nothing queued yet");
+
+    // 720p is the third preset; both videos get it, and neither asks again.
+    let _ = at;
+    app.add_at_quality(pending, &choices, 2);
+    assert!(app.dialog.is_none());
+    assert_eq!(app.downloads.len(), 3);
+    for d in &app.downloads[1..] {
+        assert_eq!(d.over.args, "--format=bv*[height<=720]+ba/b[height<=720]");
+    }
+
+    // Off, a video goes straight into the queue.
+    app.pick_quality = false;
+    app.add("https://example.com/watch?v=ccc");
+    assert!(app.dialog.is_none());
+    assert_eq!(app.downloads.len(), 4);
+}
+
+/// Per url: each one gets its own question, and the ones behind the dialog
+/// wait rather than being queued unasked or silently dropped.
+#[test]
+fn ask_per_url_queues_one_answer_at_a_time() {
+    use muxget::controllers::keys::Dialog;
+
+    let mut app = app_with(&[]);
+    app.downloads.clear();
+    app.pick_quality = true;
+    app.quality_each = true;
+
+    app.add("https://example.com/watch?v=aaa");
+    app.add("https://example.com/watch?v=bbb");
+    let Some(Dialog::Quality(pending, choices, _)) = app.dialog.clone() else {
+        panic!("no quality picker")
+    };
+    assert_eq!(pending.len(), 1, "the second url waits its turn");
+    assert_eq!(pending[0].0, "https://example.com/watch?v=aaa");
+
+    // Answering the first puts the second up, still unqueued.
+    app.add_at_quality(pending, &choices, 6);
+    assert_eq!(app.downloads.len(), 1);
+    assert_eq!(app.downloads[0].over.args, "--format=ba/b", "audio only");
+    let Some(Dialog::Quality(pending, choices, _)) = app.dialog.clone() else {
+        panic!("the second url never got asked about")
+    };
+    assert_eq!(pending[0].0, "https://example.com/watch?v=bbb");
+
+    app.add_at_quality(pending, &choices, 0);
+    assert_eq!(app.downloads.len(), 2);
+    assert!(app.dialog.is_none());
+
+    // Cancelling drops what was waiting instead of leaving it queued later.
+    app.add("https://example.com/watch?v=ccc");
+    app.add("https://example.com/watch?v=ddd");
+    app.cancel_quality();
+    app.dialog = None;
+    app.add_at_quality(Vec::new(), &[], 0);
+    assert_eq!(app.downloads.len(), 2, "nothing queued behind a cancelled picker");
+}

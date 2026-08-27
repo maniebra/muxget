@@ -10,12 +10,25 @@ use crate::utils::config_dir;
 #[derive(Debug, Default, PartialEq)]
 pub struct State {
     pub dir: Option<PathBuf>,
+    pub flags: Flags,
+    pub queues: Vec<Queue>,
+    pub downloads: Vec<SavedDownload>,
+}
+
+/// The on/off settings, together so that adding one is not another
+/// parameter through `render` and `save`.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Flags {
     /// Draw status icons with nerd font glyphs instead of plain unicode.
     pub nerd: bool,
     /// Pick which entries to download before a playlist is queued.
     pub confirm_playlist: bool,
-    pub queues: Vec<Queue>,
-    pub downloads: Vec<SavedDownload>,
+    /// Ask for a quality before a yt-dlp download is queued.
+    pub pick_quality: bool,
+    /// Ask yt-dlp what the url really offers instead of showing the presets.
+    pub probe_formats: bool,
+    /// One question per url instead of one answer for the whole batch.
+    pub quality_each: bool,
 }
 
 /// A download as it survives a restart: where it belongs, how it ended, how
@@ -86,8 +99,11 @@ impl State {
             let value = value.trim();
             match key.trim() {
                 "dir" if !value.is_empty() => state.dir = Some(PathBuf::from(value)),
-                "nerd" => state.nerd = value == "true",
-                "confirm_playlist" => state.confirm_playlist = value == "true",
+                "nerd" => state.flags.nerd = value == "true",
+                "confirm_playlist" => state.flags.confirm_playlist = value == "true",
+                "pick_quality" => state.flags.pick_quality = value == "true",
+                "probe_formats" => state.flags.probe_formats = value == "true",
+                "quality_each" => state.flags.quality_each = value == "true",
                 "queue" => {
                     let (name, rest) = value.split_once('|').unwrap_or((value, "3"));
                     if name.trim().is_empty() {
@@ -176,11 +192,13 @@ impl State {
         dir: &Path,
         queues: &[Queue],
         downloads: &[Download],
-        nerd: bool,
-        confirm_playlist: bool,
+        flags: Flags,
     ) -> String {
+        let Flags { nerd, confirm_playlist, pick_quality, probe_formats, quality_each } = flags;
         let mut text = format!(
-            "dir = {}\nnerd = {nerd}\nconfirm_playlist = {confirm_playlist}\n",
+            "dir = {}\nnerd = {nerd}\nconfirm_playlist = {confirm_playlist}\n\
+             pick_quality = {pick_quality}\nprobe_formats = {probe_formats}\n\
+             quality_each = {quality_each}\n",
             dir.display()
         );
         for q in queues {
@@ -226,12 +244,10 @@ impl State {
         dir: &Path,
         queues: &[Queue],
         downloads: &[Download],
-        nerd: bool,
-        confirm_playlist: bool,
+        flags: Flags,
     ) {
         let _ = std::fs::create_dir_all(config_dir());
-        let _ =
-            std::fs::write(path(), State::render(dir, queues, downloads, nerd, confirm_playlist));
+        let _ = std::fs::write(path(), State::render(dir, queues, downloads, flags));
     }
 
     /// Saved queues, or the single default queue when there is nothing saved.

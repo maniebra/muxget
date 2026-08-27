@@ -189,6 +189,64 @@ pub fn is_plain_date(text: &str) -> bool {
     text.len() == 8 && text.chars().all(|c| c.is_ascii_digit())
 }
 
+/// One thing the quality picker can offer: what the user reads, and the
+/// `--format` selector it stands for.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Choice {
+    pub label: String,
+    pub value: String,
+}
+
+/// The presets, as choices — what the picker shows when nothing is probed.
+pub fn presets() -> Vec<Choice> {
+    crate::models::option::QUALITY
+        .iter()
+        .map(|p| Choice { label: p.label.to_string(), value: p.value.to_string() })
+        .collect()
+}
+
+/// Ask yt-dlp what this url actually offers. One request, and the answer is
+/// the table it prints for `-F`.
+pub fn formats_command(url: &str) -> Command {
+    let mut c = Command::new("yt-dlp");
+    c.arg("-F").arg("--no-playlist").arg("--no-warnings").arg(url);
+    c
+}
+
+/// One row of that table. yt-dlp writes a header, a rule and then one format
+/// per line, each starting with its id; storyboards are thumbnails in a
+/// trench coat and are dropped.
+///
+/// The line is kept as its own label rather than split into columns: it
+/// already says resolution, size, codec and note, and yt-dlp is free to
+/// change what those columns are without this having to follow.
+pub fn format_choice(line: &str) -> Option<Choice> {
+    let line = line.trim_end();
+    if line.starts_with(char::is_whitespace) || line.is_empty() {
+        return None;
+    }
+    let mut words = line.split_whitespace();
+    let id = words.next()?;
+    let ext = words.next().unwrap_or("");
+    // The header, the rule under it, and yt-dlp's own `[info]` chatter.
+    if id == "ID" || id.starts_with('[') || id.starts_with('-') || id.starts_with('\u{2500}') {
+        return None;
+    }
+    if ext == "mhtml" || line.contains("storyboard") {
+        return None;
+    }
+    Some(Choice {
+        // A video-only stream on its own would download silent video, so ask
+        // for the best audio with it, falling back to the stream alone on a
+        // site that has no separate audio to merge.
+        value: match line.contains("video only") {
+            true => format!("{id}+ba/{id}"),
+            false => id.to_string(),
+        },
+        label: line.split_whitespace().collect::<Vec<_>>().join(" "),
+    })
+}
+
 /// Only what would end the quoted string or escape the next character.
 fn escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
@@ -213,6 +271,7 @@ impl Backend for YtDlp {
             .arg(if over.dir.is_empty() { dir } else { Path::new(&over.dir) });
         c.args(args::load(self.name()));
         // Last, so this item's settings beat the global flags.
+        c.args(args::parse(&over.args));
         if !over.name.is_empty() {
             c.arg("-o").arg(&over.name);
         }

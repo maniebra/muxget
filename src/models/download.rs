@@ -124,6 +124,10 @@ pub fn signal(pid: u32, sig: &str) -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// Urls waiting on an answer before they are queued, each with its own
+/// settings.
+pub type Pending = Vec<(String, Overrides)>;
+
 /// What a worker thread reports back to the controller.
 pub enum Update {
     Progress(usize, Progress),
@@ -134,6 +138,9 @@ pub enum Update {
     Finished(usize, Status),
     /// A playlist entry found by the expander: (queue id, url, overrides).
     Discovered(usize, String, Overrides),
+    /// A url's real formats, for the quality picker: what is waiting to be
+    /// queued, and what yt-dlp said it offers.
+    Probed(Box<(Pending, Vec<crate::models::ytdlp::Choice>)>),
     /// A whole playlist, listed but not queued, for the user to pick from.
     Listed(Box<crate::models::ytdlp::Listing>),
     /// Status line for the footer.

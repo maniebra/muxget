@@ -214,9 +214,15 @@ mod settings {
         assert_eq!(p.on_key(KeyCode::Enter), Action::ToggleNerd);
         p.on_key(KeyCode::Down);
         assert_eq!(p.on_key(KeyCode::Enter), Action::ToggleConfirmPlaylist);
+        p.on_key(KeyCode::Down);
+        assert_eq!(p.on_key(KeyCode::Enter), Action::TogglePickQuality);
+        p.on_key(KeyCode::Down);
+        assert_eq!(p.on_key(KeyCode::Enter), Action::ToggleProbeFormats);
+        p.on_key(KeyCode::Down);
+        assert_eq!(p.on_key(KeyCode::Enter), Action::ToggleQualityEach);
         // The list ends rather than wrapping onto nothing.
         p.on_key(KeyCode::Down);
-        assert_eq!(p.cursor, 3);
+        assert_eq!(p.cursor, 6);
         assert_eq!(p.on_key(KeyCode::Esc), Action::Close);
     }
 

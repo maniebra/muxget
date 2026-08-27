@@ -60,6 +60,14 @@ pub struct App {
     pub nerd: bool,
     /// Show a playlist's entries to pick from instead of queueing them all.
     pub confirm_playlist: bool,
+    /// Ask which quality to fetch when a url yt-dlp handles is added.
+    pub pick_quality: bool,
+    /// Offer the formats yt-dlp reports for the url rather than the presets.
+    pub probe_formats: bool,
+    /// Ask once per url instead of once for everything added together.
+    pub quality_each: bool,
+    /// Urls added while a quality picker was up: asked about once it closes.
+    pub(crate) later: crate::models::download::Pending,
     /// Routing rules, read once at startup.
     pub rules: Vec<Rule>,
     pub themes: Vec<Theme>,
@@ -90,8 +98,11 @@ impl App {
             }
         }
         let mut app = App::with_queues(dir, state.queues_or_default());
-        app.nerd = state.nerd;
-        app.confirm_playlist = state.confirm_playlist;
+        app.nerd = state.flags.nerd;
+        app.confirm_playlist = state.flags.confirm_playlist;
+        app.pick_quality = state.flags.pick_quality;
+        app.probe_formats = state.flags.probe_formats;
+        app.quality_each = state.flags.quality_each;
         app.restore(&state.downloads);
         // Last, so it is the line the user is left looking at: nothing works
         // without a backend, and the failure would otherwise be one cryptic
@@ -131,6 +142,10 @@ impl App {
             theme: Theme::saved().unwrap_or_default(),
             nerd: false,
             confirm_playlist: false,
+            pick_quality: false,
+            probe_formats: false,
+            quality_each: false,
+            later: Vec::new(),
             rules: rule::load(),
             themes: Theme::all(),
             history: Vec::new(),
@@ -205,6 +220,10 @@ impl App {
                 }
                 Update::Discovered(queue, url, over) => self.enqueue(&url, queue, over),
                 Update::Listed(listing) => self.listed(*listing),
+                Update::Probed(probed) => {
+                    let (pending, choices) = *probed;
+                    self.probed(pending, choices)
+                }
                 Update::Crawled(crawl, found) => self.crawled(crawl, found),
                 Update::Notice(text) => self.message = text,
                 Update::Finished(id, s) => {

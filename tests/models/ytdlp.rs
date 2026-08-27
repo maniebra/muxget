@@ -136,3 +136,31 @@ fn only_entries_near_the_cutoff_need_their_exact_date() {
     // With no range at all there is nothing to judge against.
     assert_eq!(judge(&at(1999, 1, 1), &DateRange::default(), today), Verdict::Keep);
 }
+
+/// The `-F` table: format rows become choices, everything around them does
+/// not, and a video-only stream asks for audio alongside it.
+#[test]
+fn probed_format_rows_become_choices() {
+    let table = "\
+[youtube] Extracting URL: https://example.com/watch?v=a
+[info] Available formats for a:
+ID  EXT   RESOLUTION FPS │   FILESIZE   TBR PROTO │ VCODEC        VBR ACODEC      ABR
+─────────────────────────────────────────────────────────────────────────────────────
+sb2 mhtml 48x27          │                mhtml   │ images                  storyboard
+139 m4a   audio only     │    1.20MiB    49k https │ audio only        mp4a.40.5   49k
+137 mp4   1920x1080   30 │  100.0MiB   1500k https │ avc1.640028  1500k video only
+18  mp4   640x360     30 │   10.0MiB    500k https │ avc1.42001E   500k mp4a.40.2   96k
+";
+    let choices: Vec<ytdlp::Choice> = table.lines().filter_map(ytdlp::format_choice).collect();
+    let values: Vec<&str> = choices.iter().map(|c| c.value.as_str()).collect();
+    assert_eq!(values, ["139", "137+ba/137", "18"], "no header, rule, chatter or storyboard");
+    assert!(choices[1].label.contains("1920x1080"), "the row is its own label");
+}
+
+/// Nothing probed is still a working picker: the presets are the fallback.
+#[test]
+fn the_presets_are_choices_too() {
+    let presets = ytdlp::presets();
+    assert_eq!(presets[0].label, "best available");
+    assert!(presets.iter().any(|c| c.label == "720p"));
+}

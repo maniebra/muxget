@@ -2,7 +2,7 @@ use std::process::Stdio;
 
 use crate::controllers::app::App;
 use crate::controllers::keys::{Dialog, Field, Pick};
-use crate::models::download::{Download, Overrides, Progress, Status, Update};
+use crate::models::download::{Download, Overrides, Pending, Progress, Status, Update};
 use crate::models::state::SavedDownload;
 use crate::models::log;
 use crate::models::ytdlp::Listing;
@@ -42,6 +42,18 @@ impl Filter {
     }
 }
 
+/// The formats yt-dlp reports for a url, in the order it lists them.
+fn probe_formats(url: &str) -> std::io::Result<Vec<ytdlp::Choice>> {
+    let out = ytdlp::formats_command(url).stderr(Stdio::null()).output()?;
+    Ok(String::from_utf8_lossy(&out.stdout).lines().filter_map(ytdlp::format_choice).collect())
+}
+
+/// A url yt-dlp would fetch media from, and so one there is a quality to
+/// pick for. Direct files, torrents and magnets go to aria2c and have none.
+fn wants_quality(url: &str) -> bool {
+    pick(url).is_some_and(|b| b.name() == "yt-dlp")
+}
+
 /// Adding, starting, stopping and listing downloads.
 impl App {
     /// Enqueue a url. Playlists are expanded into one row per entry first, so
@@ -58,6 +70,13 @@ impl App {
             return;
         }
         let queue = self.queue().id;
+        // A video yt-dlp would fetch, and no format asked for yet: hold it
+        // until the quality is picked. A batch added at once collects in the
+        // one dialog rather than asking per url.
+        if self.pick_quality && over.args.is_empty() && wants_quality(url) {
+            self.ask_quality(url.to_string(), over);
+            return;
+        }
         if ytdlp::expands_playlist(url) {
             // Route on the playlist's own url first: its entries are
             // `watch?v=…` links that match no rule written about a channel,
@@ -162,6 +181,100 @@ impl App {
         self.message = format!("queued {url}");
         self.save_state();
         self.pump();
+    }
+
+    /// Hold a video back and ask what quality it should be fetched at.
+    ///
+    /// Probing asks yt-dlp what this url offers, which takes a request and is
+    /// answered off-thread; the presets need neither and go up at once.
+    /// Format ids belong to one video, so a probed question is always about
+    /// one url — `quality_each` only decides how the un-probed batch is
+    /// asked about.
+    fn ask_quality(&mut self, url: String, over: Overrides) {
+        if self.probe_formats {
+            self.probe_quality(url, over);
+            return;
+        }
+        // A batch added in one go collects in the open dialog and shares one
+        // answer, unless every url is to be asked about on its own.
+        let mut pending = match self.dialog.take() {
+            Some(Dialog::Quality(pending, ..)) if !self.quality_each => pending,
+            // Not ours, or one question per url: leave it, and this url waits
+            // its turn behind the ones already asked about.
+            Some(other) => {
+                self.dialog = Some(other);
+                self.later.push((url, over));
+                return;
+            }
+            None => Vec::new(),
+        };
+        pending.push((url, over));
+        self.dialog = Some(Dialog::Quality(pending, ytdlp::presets(), 0));
+    }
+
+    /// Ask yt-dlp for this url's real formats, off-thread. One url at a time:
+    /// a second one waits in `later` until this one is answered.
+    fn probe_quality(&mut self, url: String, over: Overrides) {
+        if self.dialog.is_some() {
+            self.later.push((url, over));
+            return;
+        }
+        self.message = format!("reading the formats {url} offers…");
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let mut choices = vec![ytdlp::presets().remove(0)];
+            match probe_formats(&url) {
+                Ok(found) => choices.extend(found),
+                // Nothing probed still leaves the presets, which is a working
+                // picker rather than a dead end.
+                Err(e) => {
+                    let _ = tx.send(Update::Notice(format!("yt-dlp -F: {e}")));
+                    choices = ytdlp::presets();
+                }
+            }
+            if choices.len() == 1 {
+                choices = ytdlp::presets();
+            }
+            let _ = tx.send(Update::Probed(Box::new((vec![(url, over)], choices))));
+        });
+    }
+
+    /// The probe came back: put its formats up to be picked from.
+    pub fn probed(&mut self, pending: Pending, choices: Vec<ytdlp::Choice>) {
+        self.message = match pending.first() {
+            Some((url, _)) => format!("{} formats for {url}", choices.len()),
+            None => return,
+        };
+        self.dialog = Some(Dialog::Quality(pending, choices, 0));
+    }
+
+    /// Queue everything the quality picker was holding, each with the chosen
+    /// format as its own flag so the app-wide one is left alone. Urls that
+    /// piled up behind the dialog are asked about next.
+    pub fn add_at_quality(
+        &mut self,
+        pending: Pending,
+        choices: &[ytdlp::Choice],
+        at: usize,
+    ) {
+        self.dialog = None;
+        let Some(choice) = choices.get(at) else { return };
+        for (url, mut over) in pending {
+            over.args = format!("--format={}", choice.value);
+            // Back through the front door: a non-empty `args` skips the
+            // picker, and playlists still expand into a row per entry.
+            self.add_with(&url, over);
+        }
+        self.message = format!("quality: {}", choice.label);
+        // Whatever was added while the dialog was up gets its own question.
+        for (url, over) in std::mem::take(&mut self.later) {
+            self.add_with(&url, over);
+        }
+    }
+
+    /// Drop what was waiting behind a picker the user cancelled.
+    pub fn cancel_quality(&mut self) {
+        self.later.clear();
     }
 
     /// Read the clipboard and offer whatever urls are in it. Nothing is

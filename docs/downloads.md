@@ -50,6 +50,31 @@ it by name.
 Torrent rows also carry upload rate, session total, peers and seeders. A row is
 drawn as a torrent exactly when the tool reports a seeder count.
 
+## Picking a quality
+
+Turn on **ask for video quality** in settings › general and every url that goes
+to yt-dlp stops for a picker first: best available, 1080p down to 360p, smallest
+file, or audio only. ++j++/++k++ move, ++enter++ downloads, ++esc++ cancels.
+Urls added together — a range, a paste, links from a crawl — collect in one
+picker and share the one answer.
+
+The choice becomes that download's own `--format`, so it beats the app-wide
+**video quality** in settings › backends and leaves it alone. With the setting
+off, that app-wide value is what every video uses.
+
+Two more switches, both in settings › general, change what the picker asks:
+
+| setting | off | on |
+|---|---|---|
+| **probe real formats** | the seven presets | `yt-dlp -F` runs first and the picker lists the formats that url really has, id, resolution, size and codec as yt-dlp prints them |
+| **ask per url** | one answer covers everything added together | every url gets its own picker, one after the other |
+
+Probing costs a request per url and answers off-thread — the footer says so
+while it runs — and a probed question is always about one url, since format ids
+belong to one video. A url that reports nothing usable falls back to the
+presets. Picking a video-only stream asks for the best audio with it, so the
+file still has sound.
+
 ## Playlists and channels
 
 A url that looks like a playlist, channel or mix is expanded before anything is

@@ -215,8 +215,15 @@ pub const RULE_ROWS: usize = 1 + rule::FIELDS.len();
 
 pub const TABS: [&str; 6] =
     ["general", "backends", "crawler", "categories", "channels", "log"];
-pub const GENERAL: [&str; 4] =
-    ["theme", "download directory", "nerd font icons", "confirm before dl playlist"];
+pub const GENERAL: [&str; 7] = [
+    "theme",
+    "download directory",
+    "nerd font icons",
+    "confirm before dl playlist",
+    "ask for video quality",
+    "probe real formats",
+    "ask per url",
+];
 
 /// What the panel asks the app to do; everything else it handles itself.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -229,6 +236,9 @@ pub enum Action {
     EditDir,
     ToggleNerd,
     ToggleConfirmPlaylist,
+    TogglePickQuality,
+    ToggleProbeFormats,
+    ToggleQualityEach,
     /// Sync the channel at this index, picking from what it finds.
     SyncChannel(usize),
     /// Sync every channel, queueing everything since each one's last sync.
@@ -398,6 +408,9 @@ impl Settings {
             (0, 1, KeyCode::Enter) => Action::EditDir,
             (0, 2, KeyCode::Enter) | (0, 2, KeyCode::Char(' ')) => Action::ToggleNerd,
             (0, 3, KeyCode::Enter) | (0, 3, KeyCode::Char(' ')) => Action::ToggleConfirmPlaylist,
+            (0, 4, KeyCode::Enter) | (0, 4, KeyCode::Char(' ')) => Action::TogglePickQuality,
+            (0, 5, KeyCode::Enter) | (0, 5, KeyCode::Char(' ')) => Action::ToggleProbeFormats,
+            (0, 6, KeyCode::Enter) | (0, 6, KeyCode::Char(' ')) => Action::ToggleQualityEach,
             // One backend's form at a time; `b` walks to the next.
             (1, _, KeyCode::Char('b')) => {
                 let names: Vec<&'static str> =

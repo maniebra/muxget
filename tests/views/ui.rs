@@ -1,4 +1,4 @@
-use muxget::models::download::{Download, Overrides, Status};
+use muxget::models::download::{Download, Existing, Overrides, Status};
 use muxget::views::ui::name_of;
 
 fn row(url: &str) -> Download {
@@ -72,6 +72,29 @@ fn the_list_shows_the_total_size() {
 
     assert!(screen.contains("size"), "the column is headed");
     assert!(screen.contains("1.4GiB"), "and carries the total: {screen}");
+}
+
+#[test]
+fn collision_picker_shows_both_sizes_and_unknown_remote() {
+    use muxget::controllers::app::App;
+    use muxget::controllers::keys::Dialog;
+    use muxget::models::queue::{Queue, DEFAULT};
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    let mut app = App::with_queues(".".into(), vec![Queue::new(DEFAULT, "default", 3)]);
+    let file = Existing { id: 0, path: "/tmp/archive.iso".into(), local: 1024, remote: Some(2048), partial: false };
+    let mut term = Terminal::new(TestBackend::new(100, 24)).unwrap();
+    app.dialog = Some(Dialog::Existing(file.clone()));
+    term.draw(|f| muxget::views::ui::draw(f, &app)).unwrap();
+    let screen = term.backend().buffer().content().iter().map(|c| c.symbol()).collect::<String>();
+    assert!(screen.contains("local: 1.0KiB    remote: 2.0KiB"), "{screen}");
+
+    app.dialog = Some(Dialog::Existing(Existing { remote: None, partial: true, ..file }));
+    term.draw(|f| muxget::views::ui::draw(f, &app)).unwrap();
+    let screen = term.backend().buffer().content().iter().map(|c| c.symbol()).collect::<String>();
+    assert!(screen.contains("remote: unknown"), "{screen}");
+    assert!(screen.contains("local (partial)"), "{screen}");
 }
 
 #[test]

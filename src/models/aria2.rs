@@ -43,6 +43,7 @@ impl Backend for Aria2 {
             .arg("--dir")
             .arg(if over.dir.is_empty() { dir } else { Path::new(&over.dir) });
         c.args(args::load(self.name()));
+        c.args(args::parse(&over.args));
         // Last, so this item's settings beat the global flags.
         if !over.name.is_empty() {
             c.arg("--out").arg(&over.name);

@@ -198,6 +198,14 @@ socket anyway, but both tools retry and resume from where the file left off.
 **Order is priority.** The first waiting row in a queue is the next one to
 start, so ++shift+j++ / ++shift+k++ is how you promote something.
 
+**If the destination already exists**, muxget shows its local size beside the
+remote size when available. Press `r` to resume, `o` to overwrite from the
+start, `n` to download under a numbered new name, or `s`/++esc++ to skip and
+leave the file untouched. yt-dlp partial `.part` files count too. Direct HTTP
+remote sizes use `curl` when it is installed; otherwise the picker says
+`unknown`. Torrents and filenames chosen by a server cannot be checked before
+the backend starts.
+
 **Deleting with data** removes the file a tool named, plus its `.part` and
 `.aria2` sidecars. If no file was written yet it says so instead.
 

@@ -294,6 +294,9 @@ fn draw_log(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
         );
         return;
     }
+    // Message column width: inner area (minus border 2 + padding 2) minus the
+    // time col (8), level col (1) and two column spacings (1 each).
+    let msg_width = (area.width as usize).saturating_sub(4 + 8 + 1 + 2).max(1);
     let rows = entries.iter().skip(panel.cursor).map(|e| {
         let color = match e.level {
             log::Level::Debug => t.muted,
@@ -301,12 +304,14 @@ fn draw_log(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
             log::Level::Warn => t.accent,
             log::Level::Error => t.err,
         };
+        let text = truncate(&e.text, msg_width);
         Row::new(vec![
             Cell::from(e.at.clone()).style(Style::default().fg(t.muted)),
             Cell::from(e.level.symbol())
             .style(Style::default().fg(color)),
-            Cell::from(e.text.clone()).style(Style::default().fg(color)),
+            Cell::from(text).style(Style::default().fg(color)),
         ])
+        .height(1)
         .style(Style::default().bg(t.panel).fg(t.fg))
     });
     // The cursor is the scroll here: the table shows from it down, so the
@@ -319,6 +324,27 @@ fn draw_log(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
         [Constraint::Length(8), Constraint::Length(1), Constraint::Min(20)],
         area,
     );
+}
+
+/// Cut `text` to `width` columns, trailing `…` when clipped.
+/// ponytail: counts chars, not display width — off for wide/combining glyphs.
+fn truncate(text: &str, width: usize) -> String {
+    if text.chars().count() <= width {
+        return text.to_string();
+    }
+    let head: String = text.chars().take(width.saturating_sub(1)).collect();
+    format!("{head}…")
+}
+
+#[cfg(test)]
+mod truncate_tests {
+    use super::truncate;
+    #[test]
+    fn clips_long_text() {
+        assert_eq!(truncate("hi", 9), "hi");
+        assert_eq!(truncate("the quick brown fox", 9), "the quic…");
+        assert!(truncate("supercalifragilistic", 6).chars().count() <= 6);
+    }
 }
 
 /// What each rule field is for, shown while it is empty.

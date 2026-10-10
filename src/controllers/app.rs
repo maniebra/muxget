@@ -9,7 +9,7 @@ use ratatui::DefaultTerminal;
 use crate::controllers::downloads::Filter;
 use crate::controllers::keys::Dialog;
 use crate::controllers::options::Settings;
-use crate::models::download::{Download, Status, Update};
+use crate::models::download::{Download, Existing, Status, Update};
 use crate::models::queue::Queue;
 use crate::models::rule::{self, Rule};
 use crate::models::state::State;
@@ -68,6 +68,9 @@ pub struct App {
     pub quality_each: bool,
     /// Urls added while a quality picker was up: asked about once it closes.
     pub(crate) later: crate::models::download::Pending,
+    /// IDs being checked or waiting for a collision choice.
+    pub(crate) checking: Vec<usize>,
+    pub(crate) existing: std::collections::VecDeque<Existing>,
     /// Routing rules, read once at startup.
     pub rules: Vec<Rule>,
     pub themes: Vec<Theme>,
@@ -146,6 +149,8 @@ impl App {
             probe_formats: false,
             quality_each: false,
             later: Vec::new(),
+            checking: Vec::new(),
+            existing: std::collections::VecDeque::new(),
             rules: rule::load(),
             themes: Theme::all(),
             history: Vec::new(),
@@ -201,6 +206,23 @@ impl App {
     fn drain(&mut self) {
         while let Ok(update) = self.rx.try_recv() {
             match update {
+                Update::Checked(id, file) => {
+                    if self.downloads.iter().any(|d| d.id == id && d.status == Status::Queued) {
+                        match file {
+                            Some(file) => self.existing.push_back(file),
+                            None => {
+                                self.checking.retain(|n| *n != id);
+                                if let Some(at) = self.downloads.iter().position(|d| d.id == id) {
+                                    if !self.queues.iter().any(|q| q.id == self.downloads[at].queue && q.paused) {
+                                        self.launch(at);
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        self.checking.retain(|n| *n != id);
+                    }
+                }
                 Update::Progress(id, p) => {
                     let total = crate::utils::parse::bytes(&p.total);
                     if let Some(d) = self.find(id) {
@@ -237,6 +259,15 @@ impl App {
                 }
             }
         }
+        if self.dialog.is_none() {
+            while let Some(file) = self.existing.pop_front() {
+                if self.downloads.iter().any(|d| d.id == file.id && d.status == Status::Queued) {
+                    self.dialog = Some(Dialog::Existing(file));
+                    break;
+                }
+                self.checking.retain(|n| *n != file.id);
+            }
+        }
         // A finished download frees a slot for the next queued one.
         self.pump();
         self.save_state();
@@ -264,5 +295,37 @@ impl App {
         if self.history.len() > 240 {
             self.history.remove(0);
         }
+    }
+}
+
+#[cfg(test)]
+mod existing_tests {
+    use super::*;
+    use crate::controllers::keys::Form;
+    use crate::models::download::Overrides;
+    use crate::models::queue::DEFAULT;
+
+    #[test]
+    fn checked_file_waits_for_the_open_dialog() {
+        let config = std::env::temp_dir().join(format!("muxget-checked-{}", std::process::id()));
+        std::env::set_var("XDG_CONFIG_HOME", &config);
+        let mut app = App::with_queues(".".into(), vec![Queue::new(DEFAULT, "default", 1)]);
+        app.downloads.push(Download {
+            id: 7, queue: DEFAULT, url: "https://example.com/archive.iso".into(),
+            backend: "aria2c", over: Overrides::default(), status: Status::Queued,
+            progress: Default::default(), path: None, pid: None, tries: 0,
+        });
+        app.checking.push(7);
+        app.dialog = Some(Dialog::Add(Form::default()));
+        let file = Existing { id: 7, path: "/tmp/archive.iso".into(), local: 10, remote: Some(20), partial: false };
+        app.tx.send(Update::Checked(7, Some(file.clone()))).unwrap();
+        app.drain();
+        assert!(matches!(app.dialog, Some(Dialog::Add(_))));
+        assert_eq!(app.next_queued(DEFAULT), None);
+        app.dialog = None;
+        app.drain();
+        assert_eq!(app.dialog, Some(Dialog::Existing(file)));
+        assert_eq!(app.downloads[0].status, Status::Queued);
+        let _ = std::fs::remove_dir_all(config);
     }
 }

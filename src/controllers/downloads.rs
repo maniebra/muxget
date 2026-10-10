@@ -1,8 +1,9 @@
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use crate::controllers::app::App;
 use crate::controllers::keys::{Dialog, Field, Pick};
-use crate::models::download::{Download, Overrides, Pending, Progress, Status, Update};
+use crate::models::download::{Download, Existing, Overrides, Pending, Progress, Status, Update};
 use crate::models::state::SavedDownload;
 use crate::models::log;
 use crate::models::ytdlp::Listing;
@@ -52,6 +53,72 @@ fn probe_formats(url: &str) -> std::io::Result<Vec<ytdlp::Choice>> {
 /// pick for. Direct files, torrents and magnets go to aria2c and have none.
 fn wants_quality(url: &str) -> bool {
     pick(url).is_some_and(|b| b.name() == "yt-dlp")
+}
+
+/// aria2's ordinary HTTP/FTP destination is the URL basename unless `--out`
+/// was set.
+/// shortcut: server-chosen and encoded filenames may differ, upgrade when aria2 exposes its destination before transfer.
+fn direct_path(url: &str, dir: &Path, over: &Overrides) -> Option<PathBuf> {
+    if aria2::is_torrent(url) { return None }
+    let name = if over.name.is_empty() {
+        url.split(['?', '#']).next()?.rsplit('/').next()?
+    } else {
+        &over.name
+    };
+    if name.is_empty() || name == "." || name == ".." { return None }
+    Some(dir.join(name))
+}
+
+/// A HEAD response can omit the length; redirects may contain several, so
+/// the last one is the response for the file itself.
+fn remote_length(url: &str) -> Option<u64> {
+    if !url.starts_with("http://") && !url.starts_with("https://") { return None }
+    let out = std::process::Command::new("curl")
+        .args(["--silent", "--show-error", "--fail", "--location", "--head", "--max-time", "15", "--"])
+        .arg(url).stderr(Stdio::null()).output().ok()?;
+    if !out.status.success() { return None }
+    parse_remote_length(&String::from_utf8_lossy(&out.stdout))
+}
+
+fn parse_remote_length(headers: &str) -> Option<u64> {
+    let mut length = None;
+    for line in headers.lines() {
+        if line.starts_with("HTTP/") { length = None; }
+        if let Some((key, value)) = line.split_once(':') {
+            if key.eq_ignore_ascii_case("content-length") {
+                length = value.trim().parse().ok();
+            }
+        }
+    }
+    length
+}
+
+fn existing(id: usize, path: PathBuf, remote: Option<u64>, parts: bool) -> Option<Existing> {
+    let mut partial = false;
+    let local = std::fs::metadata(&path).or_else(|e| {
+        if !parts || e.kind() != std::io::ErrorKind::NotFound { return Err(e) }
+        let mut part = path.as_os_str().to_os_string();
+        part.push(".part");
+        partial = true;
+        std::fs::metadata(PathBuf::from(part))
+    }).ok()?;
+    if !local.is_file() { return None }
+    Some(Existing { id, path, local: local.len(), remote, partial })
+}
+
+fn unique_path(path: &Path) -> PathBuf {
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    for n in 1.. {
+        let candidate = path.with_file_name(format!("{stem} ({n}){ext}"));
+        let occupied = candidate.exists() || [".part", ".aria2"].iter().any(|suffix| {
+            let mut sidecar = candidate.as_os_str().to_os_string();
+            sidecar.push(suffix);
+            PathBuf::from(sidecar).exists()
+        });
+        if !occupied { return candidate }
+    }
+    unreachable!()
 }
 
 /// Adding, starting, stopping and listing downloads.
@@ -507,7 +574,7 @@ impl App {
                 continue;
             }
             let (id, max) = (self.queues[i].id, self.queues[i].max_active);
-            while self.active_in(id) < max {
+            while self.active_in(id) + self.downloads.iter().filter(|d| d.queue == id && self.checking.contains(&d.id) && d.status == Status::Queued).count() < max {
                 let Some(at) = self.next_queued(id) else { break };
                 self.start(at);
             }
@@ -518,6 +585,60 @@ impl App {
         let (id, url, over) = match self.downloads.get(at) {
             Some(d) => (d.id, d.url.clone(), d.over.clone()),
             None => return,
+        };
+        let Some(backend) = backend_for(&url, &over) else { return };
+        let dir = if over.dir.is_empty() { self.dir.clone() } else { PathBuf::from(&over.dir) };
+        match backend.name() {
+            "aria2c" => {
+                if let Some(path) = direct_path(&url, &dir, &over) {
+                    if path.is_file() {
+                        self.checking.push(id);
+                        self.message = format!("checking existing file for {url}…");
+                        let tx = self.tx.clone();
+                        std::thread::spawn(move || {
+                            let file = existing(id, path, remote_length(&url), false);
+                            let _ = tx.send(Update::Checked(id, file));
+                        });
+                        return;
+                    }
+                }
+            }
+            "yt-dlp" => {
+                self.checking.push(id);
+                self.message = format!("checking destination for {url}…");
+                let tx = self.tx.clone();
+                std::thread::spawn(move || {
+                    let mut cmd = backend.command(&url, &dir, &over);
+                    cmd.args(["--simulate", "--no-playlist", "--print", "%(filename)s\t%(filesize,filesize_approx)s"])
+                        .stderr(Stdio::null());
+                    if !over.user.is_empty() || !over.pass.is_empty() {
+                        if let Some(path) = crate::utils::write_creds(id, &backend.credentials(&over.user, &over.pass)) {
+                            cmd.arg(backend.config_flag()).arg(path);
+                        }
+                    }
+                    let result = cmd.output().ok().filter(|o| o.status.success()).and_then(|o| {
+                        String::from_utf8_lossy(&o.stdout).lines().last().and_then(|line| {
+                            let (name, size) = line.split_once('\t')?;
+                            let path = PathBuf::from(name);
+                            let path = if path.is_absolute() { path } else { std::env::current_dir().ok()?.join(path) };
+                            existing(id, path, size.parse().ok(), true)
+                        })
+                    });
+                    crate::utils::clear_creds(id);
+                    let _ = tx.send(Update::Checked(id, result));
+                });
+                return;
+            }
+            _ => {}
+        }
+        self.launch(at);
+    }
+
+    /// Start a row after its destination has been checked or chosen.
+    pub(crate) fn launch(&mut self, at: usize) {
+        let (id, url, over) = match self.downloads.get(at) {
+            Some(d) if d.status == Status::Queued => (d.id, d.url.clone(), d.over.clone()),
+            _ => return,
         };
         let Some(backend) = backend_for(&url, &over) else { return };
         let name = backend.name();
@@ -546,6 +667,41 @@ impl App {
                 self.message = format!("{name} failed to start: {e}");
             }
         }
+    }
+
+    /// Apply one collision choice, then let the next waiting item use its slot.
+    pub fn resolve_existing(&mut self, file: Existing, action: char) {
+        self.checking.retain(|n| *n != file.id);
+        let Some(at) = self.downloads.iter().position(|d| d.id == file.id && d.status == Status::Queued) else { return };
+        let d = &mut self.downloads[at];
+        match action {
+            's' => {
+                d.status = Status::Cancelled;
+                self.message = format!("skipped {}", file.path.display());
+            }
+            'r' | 'o' | 'n' => {
+                let path = if action == 'n' { unique_path(&file.path) } else { file.path };
+                if d.backend == "aria2c" {
+                    d.over.dir = path.parent().unwrap_or(&self.dir).display().to_string();
+                    d.over.name = path.file_name().unwrap().to_string_lossy().into_owned();
+                    match action {
+                        'r' => d.over.args.push_str(" --allow-overwrite=false --auto-file-renaming=false --continue=true"),
+                        'o' => d.over.args.push_str(" --allow-overwrite=true --remove-control-file=true --auto-file-renaming=false --continue=false"),
+                        _ => {}
+                    }
+                } else {
+                    d.over.name = path.display().to_string().replace('%', "%%");
+                    if action == 'r' { d.over.args.push_str(" --no-force-overwrites --continue"); }
+                    if action == 'o' { d.over.args.push_str(" --force-overwrites"); }
+                }
+                if !self.queues.iter().any(|q| q.id == d.queue && q.paused) {
+                    self.launch(at);
+                }
+            }
+            _ => return,
+        }
+        self.pump();
+        self.save_state();
     }
 
     /// Pause a running download, or resume a paused one.
@@ -703,7 +859,7 @@ impl App {
     pub fn next_queued(&self, queue: usize) -> Option<usize> {
         self.downloads
             .iter()
-            .position(|d| d.queue == queue && d.status == Status::Queued)
+            .position(|d| d.queue == queue && d.status == Status::Queued && !self.checking.contains(&d.id))
     }
 
     /// Sum of the running downloads' reported speeds, in bytes/s.
@@ -945,4 +1101,29 @@ fn for_each_listed(
     });
     let _ = child.wait();
     Ok(())
+}
+
+#[cfg(test)]
+mod existing_tests {
+    use super::*;
+
+    #[test]
+    fn direct_destination_and_final_response_size() {
+        let dir = Path::new("/downloads");
+        assert_eq!(direct_path("https://x.test/archive.iso?token=1", dir, &Overrides::default()), Some(dir.join("archive.iso")));
+        assert_eq!(direct_path("magnet:?xt=abc", dir, &Overrides::default()), None);
+        assert_eq!(parse_remote_length("HTTP/1.1 302 Found\r\nContent-Length: 4\r\n\r\nHTTP/2 200\r\ncontent-length: 2048\r\n\r\n"), Some(2048));
+        assert_eq!(parse_remote_length("HTTP/1.1 302 Found\r\nContent-Length: 4\r\n\r\nHTTP/2 200\r\n\r\n"), None);
+
+        let path = std::env::temp_dir().join(format!("muxget-partial-{}.mp4", std::process::id()));
+        let part = PathBuf::from(format!("{}.part", path.display()));
+        std::fs::write(&part, b"partial").unwrap();
+        let file = existing(1, path.clone(), Some(20), true).unwrap();
+        assert_eq!((file.path, file.local, file.partial), (path.clone(), 7, true));
+        let taken = PathBuf::from(format!("{} (1).mp4.part", path.with_extension("").display()));
+        std::fs::write(&taken, b"another partial").unwrap();
+        assert_eq!(unique_path(&path), path.with_file_name(format!("muxget-partial-{} (2).mp4", std::process::id())));
+        std::fs::remove_file(part).unwrap();
+        std::fs::remove_file(taken).unwrap();
+    }
 }

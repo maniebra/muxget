@@ -1,7 +1,7 @@
 use crossterm::event::KeyCode;
 use muxget::controllers::app::App;
 use muxget::controllers::keys::Dialog;
-use muxget::models::download::{Download, Status};
+use muxget::models::download::{Download, Existing, Status};
 use muxget::models::queue::{Queue, DEFAULT};
 
 fn app_with(statuses: &[Status]) -> App {
@@ -39,6 +39,51 @@ fn url_field(app: &App) -> String {
     match &app.dialog {
         Some(Dialog::Add(form)) => form.fields[0].clone(),
         other => panic!("expected the add form, got {other:?}"),
+    }
+}
+
+#[test]
+fn existing_file_choices_leave_the_original_safe() {
+    let dir = std::env::temp_dir().join(format!("muxget-existing-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("archive.iso");
+    std::fs::write(&path, b"partial").unwrap();
+    let file = Existing { id: 0, path: path.clone(), local: 7, remote: Some(20), partial: false };
+
+    for (key, status, name, flag) in [
+        ('r', Status::Queued, "archive.iso", "--continue=true"),
+        ('o', Status::Queued, "archive.iso", "--allow-overwrite=true"),
+        ('n', Status::Queued, "archive (1).iso", ""),
+        ('s', Status::Cancelled, "", ""),
+    ] {
+        let mut app = app_with(&[Status::Queued]);
+        app.queues[0].paused = true;
+        app.dialog = Some(Dialog::Existing(file.clone()));
+        app.on_key(KeyCode::Char(key));
+        assert_eq!(app.downloads[0].status, status, "choice {key}");
+        assert_eq!(app.downloads[0].over.name, name, "choice {key}");
+        assert!(app.downloads[0].over.args.contains(flag), "choice {key}");
+        assert!(app.dialog.is_none());
+        assert_eq!(std::fs::read(&path).unwrap(), b"partial");
+    }
+    std::fs::remove_file(path).unwrap();
+    std::fs::remove_dir(dir).unwrap();
+}
+
+#[test]
+fn video_collision_choices_control_the_target_and_restart_mode() {
+    let path = std::env::temp_dir().join(format!("muxget-video-{}.mp4", std::process::id()));
+    let file = Existing { id: 0, path: path.clone(), local: 7, remote: None, partial: true };
+    for (key, flag) in [('r', "--continue"), ('o', "--force-overwrites"), ('n', "")] {
+        let mut app = app_with(&[Status::Queued]);
+        app.queues[0].paused = true;
+        app.downloads[0].backend = "yt-dlp";
+        app.dialog = Some(Dialog::Existing(file.clone()));
+        app.on_key(KeyCode::Char(key));
+        assert_eq!(app.downloads[0].status, Status::Queued);
+        assert!(app.downloads[0].over.args.contains(flag));
+        let expected = if key == 'n' { path.with_file_name(format!("muxget-video-{} (1).mp4", std::process::id())) } else { path.clone() };
+        assert_eq!(app.downloads[0].over.name, expected.display().to_string());
     }
 }
 

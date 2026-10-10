@@ -8,7 +8,7 @@ use crate::controllers::crawl;
 use crate::controllers::options::{Action, Settings};
 use crate::models::crawl::{wild, Crawl, Found};
 use crate::models::ytdlp::{Choice, Listing};
-use crate::models::download::{Overrides, Pending};
+use crate::models::download::{Existing, Overrides, Pending};
 use crate::utils::{self, edit};
 
 /// The add dialog's fields, in display order.
@@ -57,6 +57,8 @@ impl Form {
 /// Modal state. `Some` means the popover is up and owns the keyboard.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dialog {
+    /// A file already occupies a download's destination.
+    Existing(Existing),
     /// New download being filled in.
     Add(Form),
     /// Editing the url of the download at this index; edit restarts it.
@@ -291,6 +293,13 @@ impl App {
 
     fn on_dialog_key(&mut self, dialog: Dialog, key: KeyCode, mods: KeyModifiers) {
         match dialog {
+            Dialog::Existing(file) => match key {
+                KeyCode::Char('r') => self.resolve_existing(file, 'r'),
+                KeyCode::Char('o') => self.resolve_existing(file, 'o'),
+                KeyCode::Char('n') => self.resolve_existing(file, 'n'),
+                KeyCode::Char('s') | KeyCode::Esc => self.resolve_existing(file, 's'),
+                _ => self.dialog = Some(Dialog::Existing(file)),
+            },
             Dialog::Delete(at) => match key {
                 KeyCode::Enter | KeyCode::Char('y') => {
                     self.on_targets(|app, at| app.delete(at))

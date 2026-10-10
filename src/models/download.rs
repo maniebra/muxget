@@ -128,8 +128,19 @@ pub fn signal(pid: u32, sig: &str) -> bool {
 /// settings.
 pub type Pending = Vec<(String, Overrides)>;
 
+/// A destination already on disk, awaiting the user's choice.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Existing {
+    pub id: usize,
+    pub path: std::path::PathBuf,
+    pub local: u64,
+    pub remote: Option<u64>,
+    pub partial: bool,
+}
+
 /// What a worker thread reports back to the controller.
 pub enum Update {
+    Checked(usize, Option<Existing>),
     Progress(usize, Progress),
     /// A crawl finished walking: the crawl it came from and the links it kept.
     Crawled(crate::models::crawl::Crawl, Vec<crate::models::crawl::Found>),

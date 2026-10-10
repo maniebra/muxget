@@ -19,6 +19,7 @@ the whole list, pauses included, comes back where you left it.
 - Files, FTP, torrents, magnets, videos, playlists, whole channels, whole sites
 - Queues with their own concurrency, so a busy lane never blocks another
 - Resumes from the partial file, across restarts, pauses included
+- Existing-file picker with resume, overwrite, rename and skip choices
 - Time windows, bandwidth quotas, retry counts and periodic re-syncs per queue
 - Routing rules by extension, domain, url pattern or size, with captures
 - Crawls a page for every file it links to, or mirrors the site offline
@@ -26,7 +27,8 @@ the whole list, pauses included, comes back where you left it.
 
 ## Install
 
-`aria2c` and `yt-dlp` on your `PATH`, plus `wget` for crawling.
+`aria2c` and `yt-dlp` on your `PATH`, plus `wget` for crawling. `curl` is optional
+for showing the remote size of an existing direct HTTP download.
 
 ```sh
 cargo install --path .

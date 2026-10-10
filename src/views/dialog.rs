@@ -51,6 +51,18 @@ pub fn draw(f: &mut Frame, app: &App) {
     };
     let t = &app.theme;
     let (title, body, hint) = match dialog {
+        Dialog::Existing(file) => (
+            "file already exists",
+            vec![
+                Line::styled(file.path.display().to_string(), Style::default().fg(t.accent)),
+                Line::default(),
+                Line::styled(
+                    format!("local{}: {}    remote: {}", if file.partial { " (partial)" } else { "" }, human(file.local as f64), file.remote.map(|n| human(n as f64)).unwrap_or_else(|| "unknown".into())),
+                    Style::default().fg(t.fg),
+                ),
+            ],
+            "r resume · o overwrite · n rename · s skip · Esc skip",
+        ),
         Dialog::Add(form) => (
             "add download",
             form_lines(t, form, app.caret),

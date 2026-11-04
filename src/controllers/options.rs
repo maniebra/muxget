@@ -201,13 +201,18 @@ pub struct Settings {
     pub editing_rule: Option<(usize, String)>,
     /// Channels to keep up with, edited here and written on the way out.
     pub channels: Vec<Channel>,
-    /// Channel field being typed into, as (row, the date rather than the url,
-    /// text).
-    pub editing_channel: Option<(usize, bool, String)>,
+    /// Channel field being typed into, or one date to apply to every channel.
+    pub editing_channel: Option<ChannelEdit>,
     /// Where the caret sits in whichever of the two is open — only ever one
     /// at a time. `usize::MAX` is the end, where a freshly opened field puts
     /// it.
     pub caret: usize,
+}
+
+/// The channels form's active text field.
+pub enum ChannelEdit {
+    Field { row: usize, date: bool, text: String },
+    AllDates(String),
 }
 
 /// Rows on the categories tab: one header per rule, then its fields.
@@ -320,6 +325,14 @@ impl Settings {
         }
     }
 
+    /// Apply one normalized cutoff to every followed channel.
+    fn accept_all_dates(&mut self, text: &str) {
+        let date = crate::models::ytdlp::date(text);
+        for channel in &mut self.channels {
+            channel.last_sync = date.clone();
+        }
+    }
+
     pub fn on_key(&mut self, key: KeyCode) -> Action {
         self.on_key_with(key, KeyModifiers::NONE)
     }
@@ -344,20 +357,32 @@ impl Settings {
 
     fn act_on(&mut self, key: KeyCode, mods: KeyModifiers) -> Action {
         // A channel field being typed into owns the keyboard.
-        if let Some((row, date, mut buf)) = self.editing_channel.take() {
+        if let Some(editing) = self.editing_channel.take() {
+            let (mut buf, channel) = match editing {
+                ChannelEdit::Field { row, date, text } => (text, Some((row, date))),
+                ChannelEdit::AllDates(text) => (text, None),
+            };
             if edit::key(&mut buf, &mut self.caret, key, mods) {
-                self.editing_channel = Some((row, date, buf));
+                self.editing_channel = Some(match channel {
+                    Some((row, date)) => ChannelEdit::Field { row, date, text: buf },
+                    None => ChannelEdit::AllDates(buf),
+                });
                 return Action::None;
             }
-            match key {
-                KeyCode::Enter => self.accept_channel(row, date, &buf),
+            match (key, channel) {
+                (KeyCode::Enter, Some((row, date))) => self.accept_channel(row, date, &buf),
+                (KeyCode::Enter, None) => self.accept_all_dates(&buf),
                 // Cancelled, but a row added with `n` and never given a url
                 // is not a channel and must not be left behind.
-                KeyCode::Esc => {
+                (KeyCode::Esc, Some((row, _))) => {
                     let url = self.channels.get(row).map(|c| c.url.clone()).unwrap_or_default();
                     self.accept_channel(row, false, &url);
                 }
-                _ => self.editing_channel = Some((row, date, buf)),
+                (KeyCode::Esc, None) => {}
+                (_, Some((row, date))) => {
+                    self.editing_channel = Some(ChannelEdit::Field { row, date, text: buf })
+                }
+                (_, None) => self.editing_channel = Some(ChannelEdit::AllDates(buf)),
             }
             return Action::None;
         }
@@ -450,19 +475,24 @@ impl Settings {
                 let at = (row + 1).min(self.channels.len());
                 self.channels.insert(at, Channel::default());
                 self.cursor = at;
-                self.editing_channel = Some((at, false, String::new()));
+                self.editing_channel = Some(ChannelEdit::Field { row: at, date: false, text: String::new() });
                 Action::None
             }
             (4, row, KeyCode::Enter) => {
                 if let Some(c) = self.channels.get(row) {
-                    self.editing_channel = Some((row, false, c.url.clone()));
+                    self.editing_channel = Some(ChannelEdit::Field { row, date: false, text: c.url.clone() });
                 }
                 Action::None
             }
             (4, row, KeyCode::Char('d')) => {
                 if let Some(c) = self.channels.get(row) {
-                    self.editing_channel = Some((row, true, c.last_sync.clone()));
+                    self.editing_channel = Some(ChannelEdit::Field { row, date: true, text: c.last_sync.clone() });
                 }
+                Action::None
+            }
+            // One cutoff is useful when adding a group of channels at once.
+            (4, _, KeyCode::Char('D')) => {
+                self.editing_channel = Some(ChannelEdit::AllDates(String::new()));
                 Action::None
             }
             (4, row, KeyCode::Char('x') | KeyCode::Delete) => {

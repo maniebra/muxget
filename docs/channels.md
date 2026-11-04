@@ -17,6 +17,7 @@ synced:
 | ++n++ | add a channel, type its url |
 | ++enter++ | edit the url |
 | ++d++ | edit the last sync date, `2024-01-31` or `20240131` |
+| ++shift+d++ | set the last sync date for every channel |
 | ++x++ / ++delete++ | drop the channel |
 | ++s++ | sync this channel and pick from what it finds |
 | ++shift+s++ | sync every channel |

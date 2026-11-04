@@ -205,6 +205,25 @@ mod settings {
     }
 
     #[test]
+    fn channels_can_share_one_last_sync_date() {
+        use muxget::models::channel::Channel;
+
+        let mut p = open(4, "aria2c");
+        p.channels = vec![
+            Channel { url: "https://example.com/one".into(), last_sync: "20260101".into() },
+            Channel { url: "https://example.com/two".into(), last_sync: "20260202".into() },
+        ];
+
+        p.on_key(KeyCode::Char('D'));
+        for key in "2026-06-03".chars().map(KeyCode::Char) {
+            p.on_key(key);
+        }
+        p.on_key(KeyCode::Enter);
+
+        assert!(p.channels.iter().all(|c| c.last_sync == "20260603"));
+    }
+
+    #[test]
     fn general_rows_hand_their_action_to_the_app() {
         let mut p = panel();
         assert_eq!(p.on_key(KeyCode::Enter), Action::NextTheme);

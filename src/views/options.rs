@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Cell, Clear, Padding, Paragraph, Row, Table, Table
 use ratatui::Frame;
 
 use crate::controllers::app::App;
-use crate::controllers::options::{Options, Settings, GENERAL, RULE_ROWS, TABS};
+use crate::controllers::options::{ChannelEdit, Options, Settings, GENERAL, RULE_ROWS, TABS};
 use crate::models::log;
 use crate::models::rule::FIELDS as RULE_FIELDS;
 use crate::models::option::Kind;
@@ -242,10 +242,14 @@ fn draw_channels(f: &mut Frame, app: &App, panel: &Settings, area: Rect) {
         return;
     }
     let rows = panel.channels.iter().enumerate().map(|(i, c)| {
-        let editing = panel.editing_channel.as_ref().filter(|(row, _, _)| *row == i);
+        let editing = match panel.editing_channel.as_ref() {
+            Some(ChannelEdit::Field { row, date, text }) if *row == i => Some((*date, text)),
+            Some(ChannelEdit::AllDates(text)) if i == panel.cursor => Some((true, text)),
+            _ => None,
+        };
         let (url, date) = match editing {
-            Some((_, true, buf)) => (c.url.clone(), edit::caret(buf, panel.caret)),
-            Some((_, false, buf)) => (edit::caret(buf, panel.caret), shown_date(&c.last_sync)),
+            Some((true, buf)) => (c.url.clone(), edit::caret(buf, panel.caret)),
+            Some((false, buf)) => (edit::caret(buf, panel.caret), shown_date(&c.last_sync)),
             None => (c.url.clone(), shown_date(&c.last_sync)),
         };
         Row::new(vec![
@@ -415,6 +419,7 @@ fn hints<'a>(panel: &Settings, t: &crate::views::theme::Theme) -> Line<'a> {
             ("Tab", "next tab"),
             ("Enter", "url"),
             ("d", "last sync"),
+            ("D", "set all sync dates"),
             ("n", "new"),
             ("x", "delete"),
             ("s/S", "sync one / all"),
